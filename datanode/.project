@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>datanode</name>
+	<name>data-node</name>
 	<comment></comment>
 	<projects>
 		<project>shared-library</project>

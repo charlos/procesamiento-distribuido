@@ -4,27 +4,18 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../shared-library/connect.c \
-../shared-library/file_system_prot.c \
-../shared-library/generales.c \
-../shared-library/memory_prot.c \
-../shared-library/serializar.c \
+../shared-library/data-node-prot.c \
+../shared-library/file-system-prot.c \
 ../shared-library/socket.c 
 
 OBJS += \
-./shared-library/connect.o \
-./shared-library/file_system_prot.o \
-./shared-library/generales.o \
-./shared-library/memory_prot.o \
-./shared-library/serializar.o \
+./shared-library/data-node-prot.o \
+./shared-library/file-system-prot.o \
 ./shared-library/socket.o 
 
 C_DEPS += \
-./shared-library/connect.d \
-./shared-library/file_system_prot.d \
-./shared-library/generales.d \
-./shared-library/memory_prot.d \
-./shared-library/serializar.d \
+./shared-library/data-node-prot.d \
+./shared-library/file-system-prot.d \
 ./shared-library/socket.d 
 
 

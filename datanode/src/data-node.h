@@ -5,12 +5,11 @@
  *      Author: utnso
  */
 
-#ifndef DATANODE_H_
-#define DATANODE_H_
+#ifndef DATA_NODE_SRC_DATANODE_H_
+#define DATA_NODE_SRC_DATANODE_H_
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <shared-library/connect.h>
 #include <commons/temporal.h>
 
-#endif /* DATANODE_H_ */
+#endif /* DATA_NODE_SRC_DATANODE_H_ */

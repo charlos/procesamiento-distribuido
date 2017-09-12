@@ -1,6 +1,6 @@
 /*
  ============================================================================
- Name        : filesystem.c
+ Name        : datanode.c
  Author      : Carlos Flores
  Version     :
  Copyright   : GitHub @Charlos
@@ -8,11 +8,10 @@
  ============================================================================
  */
 
-#include "filesystem.h"
+#include "data-node.h"
 
 int main(void) {
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
-	connect_send(hora);
 	return EXIT_SUCCESS;
 }
