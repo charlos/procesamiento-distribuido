@@ -10,7 +10,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <shared-library/connect.h>
 #include <commons/temporal.h>
 
 #endif /* MASTER_H_ */

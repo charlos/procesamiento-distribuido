@@ -13,6 +13,6 @@
 int main(void) {
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
-	connect_send(hora);
+	//connect_send(hora);
 	return EXIT_SUCCESS;
 }

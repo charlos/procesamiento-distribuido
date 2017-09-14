@@ -10,7 +10,17 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <shared-library/connect.h>
-#include <commons/temporal.h>
+
+#define	SOCKET_BACKLOG 			100
+#define BUFFER_SIZE 			1024
+
+typedef struct{
+	char* filesystem_ip;
+	char* filesystem_port;
+	char* nodo_name;
+	char* worker_port;
+	char* databin_path;
+}t_worker_conf;
+
 
 #endif /* WORKER_H_ */
