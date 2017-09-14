@@ -10,7 +10,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <shared-library/connect.h>
-#include <commons/temporal.h>
+#include <shared-library/socket.h>
+#include <shared-library/file-system-prot.h>
 
 #endif /* YAMA_H_ */

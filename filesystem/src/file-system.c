@@ -18,9 +18,11 @@ void process_request(int *);
 void handshake(int *);
 void load_file(int *);
 void read_file(int *);
+void get_file_metadata(int *);
 void load_fs_properties(void);
 void create_logger(void);
 void init(void);
+void closure(t_fs_file_block_metadata *);
 
 int main(int argc, char * argv[]) {
 	load_fs_properties();
@@ -55,7 +57,7 @@ int main(int argc, char * argv[]) {
  * @NAME load_fs_properties
  */
 void load_fs_properties(void) {
-	t_config * conf = config_create("./file-system.cfg");
+	t_config * conf = config_create("/home/utnso/file-system.cfg");
 	fs_conf = malloc(sizeof(t_fs_conf));
 	fs_conf->port = config_get_int_value(conf, "PUERTO");
 	fs_conf->logfile = config_get_string_value(conf, "LOGFILE");
@@ -92,6 +94,9 @@ void process_request(int * client_socket) {
 		case READ_FILE:
 			read_file(client_socket);
 			break;
+		case GET_METADATA_FILE:
+			get_file_metadata(client_socket);
+			break;
 		default:;
 		}
 		ope_code = fs_recv_operation_code(client_socket, logger);
@@ -109,8 +114,9 @@ void handshake(int * client_socket) {
 	//
 	// TODO
 	//
-	free(req);
 	fs_handshake_send_resp(client_socket, SUCCESS);
+
+	free(req);
 }
 
 /**
@@ -121,8 +127,11 @@ void load_file(int * client_socket) {
 	//
 	// TODO
 	//
-	free(req);
 	fs_load_file_send_resp(client_socket, SUCCESS);
+
+	free(req->path);
+	free(req->buffer);
+	free(req);
 }
 
 /**
@@ -133,19 +142,59 @@ void read_file(int * client_socket) {
 	//
 	// TODO
 	//
-	free(req);
-	// mock
-	char * message = "MOCK MESSAGE\n";
-	int buffer_size = strlen(message) + 1;
+
+	// MOCK
+	char * file_content = "YAMA FILE CONTENT SO-2C-2017\n";
+	int buffer_size = strlen(file_content) + 1;
 	void * buffer = malloc(buffer_size);
-	memcpy(buffer, message, buffer_size);
+	memcpy(buffer, file_content, buffer_size);
 	fs_read_file_send_resp(client_socket, SUCCESS, buffer_size, buffer);
 	free(buffer);
+
+	free(req->path);
+	free(req);
 }
 
+/**
+ * @NAME get_file_metadata
+ */
+void get_file_metadata(int * client_socket) {
+	t_fs_get_file_md_req * req = fs_get_file_metadata_recv_req(client_socket, logger);
+	//
+	// TODO
+	//
 
+	// MOCK
+	t_fs_file_metadata * file_md = (t_fs_file_metadata *) malloc(sizeof(t_fs_file_metadata));
+	file_md->path = (req->path);
+	file_md->file_size = 6144;
+	file_md->type = 'b';
+	file_md->block_list = list_create();
 
+	t_fs_file_block_metadata * block_md;
+	int i;
+	for (i = 0; i < 6; i++) {
+		block_md = (t_fs_file_block_metadata *) malloc(sizeof(t_fs_file_block_metadata));
+		block_md->file_block = i;
+		block_md->node = i;
+		block_md->node_block = 10 + i;
+		block_md->copy_node = i + 1;
+		block_md->copy_node_block = 20 + i;
+		block_md->size = 1024;
+		list_add((file_md->block_list), block_md);
+	}
 
+	fs_get_file_metadata_send_resp(client_socket, SUCCESS, file_md);
+
+	list_destroy_and_destroy_elements(file_md->block_list, &closure);
+	free(file_md);
+	free(req->path);
+	free(req);
+}
+
+void closure(t_fs_file_block_metadata * block_md) {
+	free(block_md);
+}
 
 
 
@@ -158,7 +207,6 @@ void read_file(int * client_socket) {
  * @NAME fs_console
  */
 void fs_console(void * unused) {
-	// TODO : chequear sincronización
 	char * input = NULL;
 	char * command = NULL;
 	char * param01 = NULL;
