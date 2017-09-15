@@ -24,6 +24,35 @@ int main(int argc, char ** argv) {
 
 	pedido_master * pedido = crear_pedido_yama(argv);
 
+	// Enviar Pedido a YAMA
+
+	// RECV LOOP
+	int * operation_code;
+	respuesta_yama * buffer;
+	int status = recv(yama_socket, operation_code, sizeof(int), 0);
+
+	while(status != -1 && operation_code == 1) {
+		status = recv(yama_socket, buffer, sizeof(respuesta_yama), 0);
+
+		if(status != -1) {
+
+			// Genero un hilo que atienda la respuesta yama
+			int s; pthread_attr_t attr;
+			s = pthread_attr_init(&attr);
+			pthread_t hilo;
+			void* res;
+
+			pthread_create(&hilo, &attr, &atender_respuesta, buffer);
+
+			s = pthread_attr_destroy(&attr);
+			s = pthread_join(hilo, res);
+		} else {
+			// atiendo error ?
+		}
+	}
+
+
+
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
 	//connect_send(hora);
