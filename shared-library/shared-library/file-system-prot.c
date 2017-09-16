@@ -22,22 +22,39 @@ int fs_recv_operation_code(int * client_socket, t_log * logger) {
 	║ HANDSHAKE ║
 	╚═══════════╝ **/
 
-int fs_handshake(int server_socket, char type, t_log * logger) {
+int fs_handshake(int server_socket, char type, int node_number, int blocks, t_log * logger) {
 
 	/**	╔═════════════════════════╦═══════════════╗
 		║ operation_code (1 byte) ║ type (1 byte) ║
 		╚═════════════════════════╩═══════════════╝ **/
 
+	/**
+			DATA_NODE
+			╔═════════════════════════╦═══════════════╦════════════════════════╦═════════════════╗
+		║ operation_code (1 byte) ║ type (1 byte) ║ node number (4 bytes) ║ blocks (4 bytes) ║
+		╚═════════════════════════╩═══════════════╩═══════════════════════╩══════════════════╝ **/
+
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_type = 1;
+	uint8_t prot_node_number = 4;
+	uint8_t prot_blocks = 4;
 
 	uint8_t req_ope_code = FS_HANDSHAKE;
-	uint8_t req_ope_type = type;
+	uint8_t req_type = type;
+	uint32_t req_node_number = node_number;
+	uint32_t req_blocks = blocks;
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_type);
+	if (type == 'd')
+		msg_size += prot_node_number + prot_blocks;
+
 	void * request = malloc(msg_size);
 	memcpy(request, &req_ope_code, prot_ope_code);
-	memcpy(request + prot_ope_code, &req_ope_type, prot_type);
+	memcpy(request + prot_ope_code, &req_type, prot_type);
+	if (type == 'd') {
+		memcpy(request + prot_ope_code + prot_type, &req_node_number, prot_node_number);
+		memcpy(request + prot_ope_code + prot_type + prot_node_number, &req_blocks, prot_blocks);
+	}
 	socket_send(&server_socket, request, msg_size, 0);
 	free(request);
 
@@ -59,6 +76,22 @@ t_fs_handshake_req * fs_handshake_recv_req(int * client_socket, t_log * logger) 
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
+	}
+	if ((request->type) == 'd') {
+		uint8_t prot_node_number = 4;
+		received_bytes = socket_recv(client_socket, &(request->node_number), prot_node_number);
+		if (received_bytes <= 0) {
+			if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+			request->exec_code = DISCONNECTED_CLIENT;
+			return request;
+		}
+		uint8_t prot_blocks = 4;
+		received_bytes = socket_recv(client_socket, &(request->blocks), prot_blocks);
+		if (received_bytes <= 0) {
+			if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+			request->exec_code = DISCONNECTED_CLIENT;
+			return request;
+		}
 	}
 	request->exec_code = SUCCESS;
 	return request;

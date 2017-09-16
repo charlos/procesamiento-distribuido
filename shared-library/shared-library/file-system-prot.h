@@ -26,6 +26,8 @@ int fs_recv_operation_code(int *, t_log *);
 typedef struct {
 	int16_t exec_code;
 	char type;
+	int32_t node_number;
+	int32_t blocks;
 } t_fs_handshake_req;
 
 /**
@@ -33,7 +35,7 @@ typedef struct {
  * @DESC
  *
  */
-int fs_handshake(int, char, t_log *);
+int fs_handshake(int, char, int, int, t_log *);
 
 /**
  * @NAME fs_handshake_recv_req
