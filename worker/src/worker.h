@@ -12,15 +12,17 @@
 #include <stdlib.h>
 
 #define	SOCKET_BACKLOG 			100
-#define BUFFER_SIZE 			1024
+#define BUFFER_SIZE 			2
 
 typedef struct{
 	char* filesystem_ip;
-	char* filesystem_port;
+	u_int32_t filesystem_port;
 	char* nodo_name;
-	char* worker_port;
+	u_int32_t worker_port;
 	char* databin_path;
 }t_worker_conf;
 
+
+void load_properties(void);
 
 #endif /* WORKER_H_ */

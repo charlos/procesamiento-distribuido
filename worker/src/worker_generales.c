@@ -13,9 +13,9 @@ void load_properties(void) {
 	t_config * conf = config_create("./nodo.cfg");
 	worker_conf = malloc(sizeof(t_worker_conf));
 	worker_conf->filesystem_ip = config_get_string_value(conf, "IP_FILESYSTEM");
-	worker_conf->filesystem_port = config_get_string_value(conf, "PUERTO_FILESYSTEM");
+	worker_conf->filesystem_port = config_get_int_value(conf, "PUERTO_FILESYSTEM");
 	worker_conf->nodo_name = config_get_string_value(conf, "NOMBRE_NODO");
-	worker_conf->worker_port = config_get_string_value(conf, "PUERTO_WORKER");
+	worker_conf->worker_port = config_get_int_value(conf, "PUERTO_WORKER");
 	worker_conf->databin_path = config_get_string_value(conf, "RUTA_DATABIN");
 	free(conf);
 }
