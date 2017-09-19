@@ -8,8 +8,15 @@
 #ifndef DATA_NODE_SRC_DATANODE_H_
 #define DATA_NODE_SRC_DATANODE_H_
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <commons/temporal.h>
+#include <stdint.h>
+
+typedef struct {
+	char * node_name;
+	char * port;
+	char * fs_ip;
+	char * fs_port;
+	char * data_bin_path;
+	char * logfile;
+} t_dn_conf;
 
 #endif /* DATA_NODE_SRC_DATANODE_H_ */

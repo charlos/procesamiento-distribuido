@@ -22,38 +22,39 @@ int fs_recv_operation_code(int * client_socket, t_log * logger) {
 	║ HANDSHAKE ║
 	╚═══════════╝ **/
 
-int fs_handshake(int server_socket, char type, int node_number, int blocks, t_log * logger) {
+int fs_handshake(int server_socket, char type, char * node_name, int blocks, t_log * logger) {
 
 	/**	╔═════════════════════════╦═══════════════╗
 		║ operation_code (1 byte) ║ type (1 byte) ║
 		╚═════════════════════════╩═══════════════╝ **/
 
 	/**
-			DATA_NODE
-			╔═════════════════════════╦═══════════════╦════════════════════════╦═════════════════╗
-		║ operation_code (1 byte) ║ type (1 byte) ║ node number (4 bytes) ║ blocks (4 bytes) ║
-		╚═════════════════════════╩═══════════════╩═══════════════════════╩══════════════════╝ **/
+		DATA_NODE
+		╔═════════════════════════╦═══════════════╦═════════════════════════╦═══════════╦══════════════════╗
+		║ operation_code (1 byte) ║ type (1 byte) ║ node name size (1 byte) ║ node name ║ blocks (4 bytes) ║
+		╚═════════════════════════╩═══════════════╩═════════════════════════╩═══════════╩══════════════════╝ **/
 
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_type = 1;
-	uint8_t prot_node_number = 4;
+	uint8_t prot_node_name_size = 1;
 	uint8_t prot_blocks = 4;
 
 	uint8_t req_ope_code = FS_HANDSHAKE;
 	uint8_t req_type = type;
-	uint32_t req_node_number = node_number;
+	uint8_t req_node_name_size = strlen(node_name) + 1;
 	uint32_t req_blocks = blocks;
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_type);
 	if (type == 'd')
-		msg_size += prot_node_number + prot_blocks;
+		msg_size += prot_node_name_size + req_node_name_size + prot_blocks;
 
 	void * request = malloc(msg_size);
 	memcpy(request, &req_ope_code, prot_ope_code);
 	memcpy(request + prot_ope_code, &req_type, prot_type);
 	if (type == 'd') {
-		memcpy(request + prot_ope_code + prot_type, &req_node_number, prot_node_number);
-		memcpy(request + prot_ope_code + prot_type + prot_node_number, &req_blocks, prot_blocks);
+		memcpy(request + prot_ope_code + prot_type, &req_node_name_size, prot_node_name_size);
+		memcpy(request + prot_ope_code + prot_type + prot_node_name_size, node_name, req_node_name_size);
+		memcpy(request + prot_ope_code + prot_type + prot_node_name_size + req_node_name_size, &req_blocks, prot_blocks);
 	}
 	socket_send(&server_socket, request, msg_size, 0);
 	free(request);
@@ -78,8 +79,16 @@ t_fs_handshake_req * fs_handshake_recv_req(int * client_socket, t_log * logger) 
 		return request;
 	}
 	if ((request->type) == 'd') {
-		uint8_t prot_node_number = 4;
-		received_bytes = socket_recv(client_socket, &(request->node_number), prot_node_number);
+		uint8_t prot_node_name_size = 1;
+		uint8_t node_name_size;
+		int received_bytes = socket_recv(client_socket, &node_name_size, prot_node_name_size);
+		if (received_bytes <= 0) {
+			if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+			request->exec_code = DISCONNECTED_CLIENT;
+			return request;
+		}
+		request->node_name = malloc(sizeof(char) * node_name_size);
+		received_bytes = socket_recv(client_socket, (request->node_name), node_name_size);
 		if (received_bytes <= 0) {
 			if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 			request->exec_code = DISCONNECTED_CLIENT;
@@ -114,8 +123,8 @@ void fs_handshake_send_resp(int * client_socket, int resp_code) {
 int fs_load_file(int server_socket, char * path, char type, int buffer_size, void * buffer, t_log * logger) {
 
 	/**	╔═════════════════════════╦═════════════════════╦══════╦═══════════════╦════════════════════════╦════════╗
-    ║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║ type (1 byte) ║ buffer_size (4 bytes)  ║ buffer ║
-    ╚═════════════════════════╩═════════════════════╩══════╩═══════════════╩════════════════════════╩════════╝ **/
+    	║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║ type (1 byte) ║ buffer_size (4 bytes)  ║ buffer ║
+    	╚═════════════════════════╩═════════════════════╩══════╩═══════════════╩════════════════════════╩════════╝ **/
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_path_size = 4;
 	uint8_t prot_type = 1;
@@ -207,8 +216,8 @@ void fs_load_file_send_resp(int * client_socket, int resp_code) {
 t_fs_read_file_resp * fs_read_file(int server_socket, char * path, t_log * logger) {
 
 	/**	╔═════════════════════════╦═════════════════════╦══════╗
-    ║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║
-    ╚═════════════════════════╩═════════════════════╩══════╝ **/
+    	║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║
+    	╚═════════════════════════╩═════════════════════╩══════╝ **/
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_path_size = 4;
 
@@ -296,8 +305,8 @@ void fs_read_file_send_resp(int * client_socket, int resp_code, int buffer_size,
 t_fs_get_file_md_resp * fs_get_file_metadata(int server_socket, char * path, t_log * logger) {
 
 	/**	╔═════════════════════════╦═════════════════════╦══════╗
-    ║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║
-    ╚═════════════════════════╩═════════════════════╩══════╝ **/
+    	║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║
+    	╚═════════════════════════╩═════════════════════╩══════╝ **/
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_path_size = 4;
 

@@ -5,7 +5,7 @@
 #ifndef DATA_NODE_PROTOCOL_H_
 #define DATA_NODE_PROTOCOL_H_
 
-#define BLOCK_SIZE 			1024
+#define BLOCK_SIZE 			1048576
 
 #define	GET_BLOCK           1
 #define SET_BLOCK           2

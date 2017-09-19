@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <commons/config.h>
+#include <commons/bitarray.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <shared-library/file-system-prot.h>
@@ -19,7 +20,11 @@
 int listenning_socket;
 t_fs_conf * fs_conf;
 t_log * logger;
+
+// directories mapped file ptr
 void * directories_mf_ptr;
+// bitmap nodes list
+t_list * bitmap_node_list;
 
 
 void fs_console(void *);
@@ -32,8 +37,11 @@ void load_fs_properties(void);
 void create_logger(void);
 void init(void);
 void closure(void *);
-void connect_node(int *, int, int);
-void add_node(t_config *, t_list *, int, int);
+void connect_node(int *, char *, int);
+void add_node(t_config *, t_list *, char *, int);
+void create_bitmap_for_node(char *, int);
+void load_bitmap_node(bool, char *, int);
+void * map_file(char *);
 
 int main(int argc, char * argv[]) {
 	load_fs_properties();
@@ -100,9 +108,7 @@ static void check(int test, const char * message, ...) {
  * @NAME init
  */
 void init(void) {
-
 	struct stat sb;
-
 	// metadata directory
 	char * metadata_path = string_from_format("%s/metadata", (fs_conf->mount_point));
 	if ((stat(metadata_path, &sb) < 0) || (stat(metadata_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
@@ -127,6 +133,7 @@ void init(void) {
 		free(dir);
 		fclose(dir_file);
 	}
+	directories_mf_ptr = map_file(directories_file_path);
 
 	// nodes file
 	char * nodes_table_file_path = string_from_format("%s/nodos.bin", metadata_path);
@@ -142,25 +149,35 @@ void init(void) {
 	char * nodes_bitmap_path = string_from_format("%s/bitmaps", metadata_path);
 	if ((stat(nodes_bitmap_path, &sb) < 0) || (stat(nodes_bitmap_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
 		mkdir(nodes_bitmap_path, S_IRWXU | S_IRWXG | S_IRWXO);
-
-	size_t size;
-	int fd; // file descriptor
-	int status;
-
-	fd = open(directories_file_path, O_RDWR);
-	check(fd < 0, "open %s failed: %s", directories_file_path, strerror(errno));
-
-	status = fstat(fd, &sb);
-	check(status < 0, "stat %s failed: %s", directories_file_path, strerror (errno));
-	size = sb.st_size;
-
-	directories_mf_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	check((directories_mf_ptr == MAP_FAILED), "mmap %s failed: %s", directories_file_path, strerror (errno));
+	// creating bitmap node list
+	bitmap_node_list = list_create();
 
 	free(nodes_bitmap_path);
 	free(nodes_table_file_path);
 	free(directories_file_path);
 	free(metadata_path);
+}
+
+/**
+ * @NAME map_file
+ */
+void * map_file(char * file_path) {
+	struct stat sb;
+	size_t size;
+	int fd; // file descriptor
+	int status;
+
+	fd = open(file_path, O_RDWR);
+	check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
+
+	status = fstat(fd, &sb);
+	check(status < 0, "stat %s failed: %s", file_path, strerror (errno));
+	size = sb.st_size;
+
+	void * mapped_file_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	check((mapped_file_ptr == MAP_FAILED), "mmap %s failed: %s", file_path, strerror (errno));
+
+	return mapped_file_ptr;
 }
 
 /**
@@ -200,16 +217,21 @@ void handshake(int * client_socket) {
 	switch (req->type) {
 	case 'd':
 		// data-node
-		connect_node(client_socket, req->node_number, req->blocks);
+		connect_node(client_socket, req->node_name, req->blocks);
+		free(req->node_name);
 		break;
 	case 'y':
 		// yama
+		//
 		// TODO
+		//
 		fs_handshake_send_resp(client_socket, SUCCESS);
 		break;
 	case 'w':
 		//worker
+		//
 		// TODO
+		//
 		fs_handshake_send_resp(client_socket, SUCCESS);
 		break;
 	default:;
@@ -220,33 +242,38 @@ void handshake(int * client_socket) {
 /**
  * @NAME connect_node
  */
-void connect_node(int * client_socket, int new_node, int blocks) {
+void connect_node(int * client_socket, char * node_name, int blocks) {
 	char * nodes_table_file_path = string_from_format("%s/metadata/nodos.bin", (fs_conf->mount_point));
 	t_config * nodes_table  = config_create(nodes_table_file_path);
 	char ** nodes = config_get_array_value(nodes_table, "NODOS");
 
-	char * new_node_str = string_from_format("Nodo%d", new_node);
 	t_list * node_list = list_create();
 	bool exits = false;
 	int pos = 0;
 	char * node;
-	while (!exits && nodes[pos] != NULL) {
+	while (nodes[pos] != NULL) {
 		node = nodes[pos];
 		list_add(node_list, node);
-		exits = (strcmp(new_node_str, node) == 0);
+		if (strcmp(node_name, node) == 0) {
+			exits = true;
+			break;
+		}
 		pos++;
 	}
 
-	if (!exits)
-		add_node(nodes_table, node_list, new_node, blocks);
+	if (!exits) {
+		add_node(nodes_table, node_list, node_name, blocks);
+		create_bitmap_for_node(node_name, blocks);
+	}
+
+	load_bitmap_node(!exits, node_name, blocks);
 
 	//
 	// TODO: ¿Debe existir una tabla de nodo - file descriptor para saber que socket corresponde a cada nodo?
 	//
 
 	list_destroy_and_destroy_elements(node_list, &closure);
-	free(new_node_str);
-	free(nodes); // TODO: check free
+	free(nodes);
 	free(nodes_table);
 	free(nodes_table_file_path);
 	fs_handshake_send_resp(client_socket, SUCCESS);
@@ -255,7 +282,7 @@ void connect_node(int * client_socket, int new_node, int blocks) {
 /**
  * @NAME add_node
  */
-void add_node(t_config * nodes_table, t_list * node_list, int new_node, int blocks) {
+void add_node(t_config * nodes_table, t_list * node_list, char * new_node_name, int blocks) {
 	int new_value = (config_get_int_value(nodes_table, "TAMANIO")) + blocks;
 	char * new_value_str = string_itoa(new_value);
 	config_set_value(nodes_table, "TAMANIO", new_value_str);
@@ -266,8 +293,8 @@ void add_node(t_config * nodes_table, t_list * node_list, int new_node, int bloc
 	config_set_value(nodes_table, "LIBRE", new_value_str);
 	free(new_value_str);
 
-	char * new_node_blocks = string_from_format("Nodo%dTotal", new_node);
-	char * new_node_free_blocks = string_from_format("Nodo%dLibre", new_node);
+	char * new_node_blocks = string_from_format("%sTotal", new_node_name);
+	char * new_node_free_blocks = string_from_format("%sLibre", new_node_name);
 	char * node_list_str;
 
 	if (node_list->elements_count > 0) {
@@ -280,13 +307,13 @@ void add_node(t_config * nodes_table, t_list * node_list, int new_node, int bloc
 			node_list_str = aux;
 			pos++;
 		}
-		aux = string_from_format("%s,Nodo%d]", node_list_str, new_node);
+		aux = string_from_format("%s,%s]", node_list_str, new_node_name);
 		free(node_list_str);
 		node_list_str = aux;
 		config_set_value(nodes_table, "NODOS", node_list_str);
 		free(node_list_str);
 	} else {
-		node_list_str = string_from_format("[Nodo%d]", new_node);
+		node_list_str = string_from_format("[%s]", new_node_name);
 		config_set_value(nodes_table, "NODOS", node_list_str);
 		free(node_list_str);
 	}
@@ -298,6 +325,63 @@ void add_node(t_config * nodes_table, t_list * node_list, int new_node, int bloc
 	free(new_value_str);
 	free(new_node_free_blocks);
 	free(new_node_blocks);
+}
+
+/**
+ * @NAME create_bitmap_for_node
+ */
+void create_bitmap_for_node(char * new_node_name, int blocks) {
+	struct stat sb;
+	char * bitmap_file_path = string_from_format("%s/metadata/bitmaps/%s.bin", (fs_conf->mount_point), new_node_name);
+	if ((stat(bitmap_file_path, &sb) < 0) || (stat(bitmap_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+		FILE * bitmap_file = fopen(bitmap_file_path, "wb");
+		int j = (blocks / 8) + (((blocks % 8) > 0) ? 1 : 0); // 1 byte = 8 bits
+		char ch = '\0';
+		int i = 0;
+		while (i < j) {
+			fwrite(&ch, sizeof(char), 1, bitmap_file);
+			i++;
+		}
+		fclose(bitmap_file);
+	}
+	free(bitmap_file_path);
+}
+
+/**
+ * @NAME load_bitmap_node
+ */
+void load_bitmap_node(bool clean, char * node_name, int blocks) {
+
+	t_fs_bitmap_node * bitmap_node;
+	bool loaded = false;
+	int index = 0;
+	while (index < (bitmap_node_list->elements_count)) {
+		bitmap_node = (t_fs_bitmap_node *) list_get(bitmap_node_list, index);
+		if (strcmp(node_name, (bitmap_node->node_name)) == 0) {
+			loaded = true;
+			break;
+		}
+		index++;
+	}
+
+	if (!loaded) {
+		char * bitmap_file_path = string_from_format("%s/metadata/bitmaps/%s.bin", (fs_conf->mount_point), node_name);
+		t_bitarray * bitmap = bitarray_create_with_mode(map_file(bitmap_file_path), blocks, MSB_FIRST);
+		if (clean) {
+			int pos = 0;
+			while (pos < blocks) {
+				bitarray_clean_bit(bitmap, pos);
+				pos++;
+			}
+		}
+		int node_name_size = strlen(node_name) + 1;
+		bitmap_node = (t_fs_bitmap_node *) malloc(sizeof(t_fs_bitmap_node));
+		bitmap_node->node_name = malloc(sizeof(char) * node_name_size);
+		memcpy((bitmap_node->node_name), node_name, node_name_size);
+		bitmap_node->bitmap = bitmap;
+		list_add(bitmap_node_list, bitmap_node);
+		free(bitmap_file_path);
+	}
 }
 
 /**
@@ -407,3 +491,12 @@ void fs_console(void * unused) {
 		}
 	}
 }
+
+//
+// Para verificar:
+//
+
+// Si el FS que se levanta, corresponde a un estado anterior,
+// se debe verificar que el nombre de los archivos bitmap sean igual al configurado como nombre del nodo en Data-Node
+
+// http://www.chuidiang.org/clinux/sockets/socketselect.php
