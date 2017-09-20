@@ -20,6 +20,7 @@ typedef struct {
 
 typedef struct {
 	char * node_name;
+	int size;
 	t_bitarray * bitmap;
 } t_fs_bitmap_node;
 

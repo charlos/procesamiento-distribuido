@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <shared-library/file-system-prot.h>
+#include <shared-library/data-node-prot.h>
 #include <shared-library/socket.h>
 #include "file-system.h"
 
@@ -21,11 +22,9 @@ int listenning_socket;
 t_fs_conf * fs_conf;
 t_log * logger;
 
-// directories mapped file ptr
-void * directories_mf_ptr;
-// bitmap nodes list
-t_list * bitmap_node_list;
-
+void * directories_mf_ptr; // directories mapped file ptr
+t_config * nodes_table; // nodes table
+t_list * bitmap_node_list; // bitmap nodes list
 
 void fs_console(void *);
 void process_request(int *);
@@ -38,10 +37,17 @@ void create_logger(void);
 void init(void);
 void closure(void *);
 void connect_node(int *, char *, int);
-void add_node(t_config *, t_list *, char *, int);
+void add_node(t_list *, char *, int);
 void create_bitmap_for_node(char *, int);
 void load_bitmap_node(bool, char *, int);
 void * map_file(char *);
+
+void create_metadata_file(char *, int, int, char);
+int assign_blocks_to_file(t_config *, int);
+char * assign_node(char *);
+int assign_node_block(char *);
+void free_assigned_blocks(t_config *, int);
+void free_node_block(char *, int);
 
 int main(int argc, char * argv[]) {
 	load_fs_properties();
@@ -114,6 +120,11 @@ void init(void) {
 	if ((stat(metadata_path, &sb) < 0) || (stat(metadata_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
 		mkdir(metadata_path, S_IRWXU | S_IRWXG | S_IRWXO);
 
+	// files directory
+	char * files_path = string_from_format("%s/archivos", metadata_path);
+	if ((stat(files_path, &sb) < 0) || (stat(files_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
+		mkdir(files_path, S_IRWXU | S_IRWXG | S_IRWXO);
+
 	// directories file
 	char * directories_file_path = string_from_format("%s/directorios.dat", metadata_path);
 	if ((stat(directories_file_path, &sb) < 0) || (stat(directories_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
@@ -144,6 +155,7 @@ void init(void) {
 		fprintf(nodes_file,"NODOS=[]\0");
 		fclose(nodes_file);
 	}
+	nodes_table = config_create(nodes_table_file_path);
 
 	// node bitmap directory
 	char * nodes_bitmap_path = string_from_format("%s/bitmaps", metadata_path);
@@ -155,6 +167,7 @@ void init(void) {
 	free(nodes_bitmap_path);
 	free(nodes_table_file_path);
 	free(directories_file_path);
+	free(files_path);
 	free(metadata_path);
 }
 
@@ -243,10 +256,7 @@ void handshake(int * client_socket) {
  * @NAME connect_node
  */
 void connect_node(int * client_socket, char * node_name, int blocks) {
-	char * nodes_table_file_path = string_from_format("%s/metadata/nodos.bin", (fs_conf->mount_point));
-	t_config * nodes_table  = config_create(nodes_table_file_path);
 	char ** nodes = config_get_array_value(nodes_table, "NODOS");
-
 	t_list * node_list = list_create();
 	bool exits = false;
 	int pos = 0;
@@ -262,7 +272,7 @@ void connect_node(int * client_socket, char * node_name, int blocks) {
 	}
 
 	if (!exits) {
-		add_node(nodes_table, node_list, node_name, blocks);
+		add_node(node_list, node_name, blocks);
 		create_bitmap_for_node(node_name, blocks);
 	}
 
@@ -273,16 +283,18 @@ void connect_node(int * client_socket, char * node_name, int blocks) {
 	//
 
 	list_destroy_and_destroy_elements(node_list, &closure);
+	pos = 0;
+	while (nodes[pos] != NULL) {
+		free(nodes[pos]);
+	}
 	free(nodes);
-	free(nodes_table);
-	free(nodes_table_file_path);
 	fs_handshake_send_resp(client_socket, SUCCESS);
 }
 
 /**
  * @NAME add_node
  */
-void add_node(t_config * nodes_table, t_list * node_list, char * new_node_name, int blocks) {
+void add_node(t_list * node_list, char * new_node_name, int blocks) {
 	int new_value = (config_get_int_value(nodes_table, "TAMANIO")) + blocks;
 	char * new_value_str = string_itoa(new_value);
 	config_set_value(nodes_table, "TAMANIO", new_value_str);
@@ -379,6 +391,7 @@ void load_bitmap_node(bool clean, char * node_name, int blocks) {
 		bitmap_node->node_name = malloc(sizeof(char) * node_name_size);
 		memcpy((bitmap_node->node_name), node_name, node_name_size);
 		bitmap_node->bitmap = bitmap;
+		bitmap_node->size = blocks;
 		list_add(bitmap_node_list, bitmap_node);
 		free(bitmap_file_path);
 	}
@@ -460,6 +473,248 @@ void get_file_metadata(int * client_socket) {
 void closure(void * node) {
 	free(node);
 }
+
+
+
+
+
+
+
+
+
+
+/**
+ * @NAME create_metadata_file
+ */
+void create_metadata_file(char * file_name, int file_size, int index, char type) {
+	struct stat sb;
+	// index file directory
+	char * index_path = string_from_format("%s/archivos/%d", (fs_conf->mount_point), index);
+	if ((stat(index_path, &sb) < 0) || (stat(index_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
+		mkdir(index_path, S_IRWXU | S_IRWXG | S_IRWXO);
+
+	// file
+	char * file_path = string_from_format("%s/%s", index_path, file_name);
+	FILE * nodes_file = fopen(file_path, "w");
+	fprintf(nodes_file,"TAMANIO=%d\n", file_size);
+	fprintf(nodes_file,"TIPO=%s\n", ((type == 'b') ? "BINARIO" : "TEXTO"));
+	fclose(nodes_file);
+
+	t_config * file = config_create(file_path);
+
+	int exec = assign_blocks_to_file(file, file_size);
+
+	free(file);
+	free(file_path);
+	free(index_path);
+}
+
+/**
+ * @NAME assign_blocks_to_file
+ */
+int assign_blocks_to_file(t_config * file, int file_size) {
+
+	int bytes_to_assign = file_size;
+
+	char * key;
+	char * value_str;
+	char * orig;
+	char * cpy;
+	int assigned_block;
+	int block = 0;
+	while (bytes_to_assign > 0) {
+
+		orig = assign_node(NULL);
+		if (!orig) break;
+		cpy = assign_node(orig);
+		if (!cpy) {
+			free(orig);
+			break;
+		}
+
+		key = string_from_format("%sLibre", orig);
+		value_str = string_itoa((config_get_int_value(nodes_table, key)) - 1);
+		config_set_value(nodes_table, key, value_str);
+		free(value_str);
+		free(key);
+
+		key = string_from_format("%sLibre", cpy);
+		value_str = string_itoa((config_get_int_value(nodes_table, key)) - 1);
+		config_set_value(nodes_table, key, value_str);
+		free(value_str);
+		free(key);
+
+		value_str = string_itoa((config_get_int_value(nodes_table, "LIBRE")) - 2);
+		config_set_value(nodes_table, "LIBRE", value_str);
+		free(value_str);
+
+		assigned_block = assign_node_block(orig);
+		key = string_from_format("BLOQUE%dCOPIA0", block);
+		value_str = string_from_format("[%s, %d]\n", cpy, assigned_block);
+		dictionary_put(file->properties, key, (void *) value_str);
+		free(value_str);
+		free(key);
+
+		assigned_block = assign_node_block(cpy);
+		free(key);
+		key = string_from_format("BLOQUE%dCOPIA1", block);
+		value_str = string_from_format("[%s, %d]\n", cpy, assigned_block);
+		dictionary_put(file->properties, key, (void *) value_str);
+		free(value_str);
+		free(key);
+
+		config_save(file);
+		config_save(nodes_table);
+
+		free(cpy);
+		free(orig);
+		bytes_to_assign -= BLOCK_SIZE;
+		block++;
+	}
+
+	if (bytes_to_assign > 0) {
+		free_assigned_blocks(file, (block + 1));
+		return ENOSPC;
+	}
+
+	return SUCCESS;
+}
+
+/**
+ * @NAME assign_node
+ */
+char * assign_node(char * unwanted_node) {
+	char * selected_node;
+	int max = -1;
+
+	t_fs_bitmap_node * bitmap_node;
+	char * key;
+	int free_blocks;
+	int index = 0;
+	while (index < (bitmap_node_list->elements_count)) {
+		bitmap_node = (t_fs_bitmap_node *) list_get(bitmap_node_list, index);
+		if (unwanted_node && (strcmp((bitmap_node->node_name), unwanted_node) == 0)) {
+			continue;
+		} else {
+			key = string_from_format("%sLibre", (bitmap_node->node_name));
+			free_blocks = config_get_int_value(nodes_table, key);
+			if ((free_blocks > 0) && ((max < 0) || (free_blocks > max))) {
+				if (selected_node) free(selected_node);
+				max = free_blocks;
+				selected_node = string_duplicate(bitmap_node->node_name);
+			}
+			free(key);
+		}
+		index++;
+	}
+	return selected_node;
+}
+
+/**
+ * @NAME assign_node_block
+ */
+int assign_node_block(char * node) {
+	int block;
+	t_fs_bitmap_node * bitmap_node;
+	int index = 0;
+	while (index < (bitmap_node_list->elements_count)) {
+		bitmap_node = (t_fs_bitmap_node *) list_get(bitmap_node_list, index);
+		if (strcmp(node, (bitmap_node->node_name)) == 0) {
+			bool its_busy;
+			int pos = 0;
+			while (pos < (bitmap_node->size)) {
+				its_busy = bitarray_test_bit(bitmap_node->bitmap, pos);
+				if (!its_busy) {
+					block = pos;
+					break;
+				}
+				pos++;
+			}
+			break;
+		}
+		index++;
+	}
+	return block;
+}
+
+/**
+ * @NAME free_assigned_blocks
+ */
+void free_assigned_blocks(t_config * file, int used_blocks) {
+
+	char * key;
+	char * value_str;
+	char ** data;
+	char * node;
+	int used_b;
+
+	int block = 0;
+	while (block < used_blocks) {
+
+		key = string_from_format("BLOQUE%dCOPIA0", block);
+		data = config_get_array_value(file, key);
+		free(key);
+		node = data[0];
+		used_b = atoi(data[1]);
+		free_node_block(node, used_b);
+		key = string_from_format("%sLibre", node);
+		value_str = string_itoa(((config_get_int_value(nodes_table, key)) + 1));
+		config_set_value(nodes_table, key, value_str);
+		free(value_str);
+		free(key);
+		free(data[0]);
+		free(data[1]);
+		free(data);
+
+		key = string_from_format("BLOQUE%dCOPIA1", block);
+		data = config_get_array_value(file, key);
+		free(key);
+		node = data[0];
+		used_b = atoi(data[1]);
+		free_node_block(node, used_b);
+		key = string_from_format("%sLibre", node);
+		value_str = string_itoa(((config_get_int_value(nodes_table, key)) + 1));
+		config_set_value(nodes_table, key, value_str);
+		free(value_str);
+		free(key);
+		free(data[0]);
+		free(data[1]);
+		free(data);
+
+		value_str = string_itoa((config_get_int_value(nodes_table, "LIBRE")) + 2);
+		config_set_value(nodes_table, "LIBRE", value_str);
+		free(value_str);
+
+		block++;
+	}
+
+	config_save(nodes_table);
+
+}
+
+/**
+ * @NAME free_node_block
+ */
+void free_node_block(char * node, int block) {
+	t_fs_bitmap_node * bitmap_node;
+	int index = 0;
+	while (index < (bitmap_node_list->elements_count)) {
+		bitmap_node = (t_fs_bitmap_node *) list_get(bitmap_node_list, index);
+		if (strcmp((bitmap_node->node_name), node) == 0) {
+			bitarray_clean_bit(bitmap_node->bitmap, block);
+			return;
+		}
+		index++;
+	}
+}
+
+
+
+
+
+
+
+
 
 
 
