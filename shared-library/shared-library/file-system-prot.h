@@ -13,8 +13,10 @@
 #define	GET_METADATA_FILE   4
 
 #define	SUCCESS     				  	   1
+#define	ERROR							-200
 #define	DISCONNECTED_CLIENT			  	-201
 #define	DISCONNECTED_SERVER			   	-202
+#define	ENOSPC						    -203
 
 /**
  * @NAME fs_recv_operation_code
