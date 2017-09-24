@@ -19,7 +19,6 @@
 #include <sys/mman.h>
 
 t_log * logger;
-struct_file * transformador_file;
 typedef struct {
 	char * ip_yama;
 	char * port_yama;
@@ -46,6 +45,7 @@ typedef struct {
 	char * file;
 	size_t filesize;
 } struct_file;
+struct_file * transformador_file;
 
 typedef struct {
 	pthread_t thread_id;
