@@ -14,16 +14,11 @@
 #include <commons/log.h>
 #include <commons/config.h>
 #include <commons/collections/list.h>
-#include <pthread.h>
+#include <shared-library/master-prot.h>
+#include <shared-library/worker-prot.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-t_log * logger;
-typedef struct {
-	char * ip_yama;
-	char * port_yama;
-} master_cfg;
-master_cfg * master_config;
 
 typedef struct {
 	char * ruta_trans;
@@ -33,19 +28,17 @@ typedef struct {
 } pedido_master;
 
 typedef struct {
-	pthread_t thread_id;
-	int nodo;
-	char * ip_port;
-	int bloque;
-	int bytes_ocupados;
-	char * archivo_temporal;
-} respuesta_yama;
-
-typedef struct {
-	char * file;
+	void * file;
 	size_t filesize;
 } struct_file;
 struct_file * transformador_file;
+
+t_log * logger;
+typedef struct {
+	char * ip_yama;
+	char * port_yama;
+} master_cfg;
+master_cfg * master_config;
 
 typedef struct {
 	pthread_t thread_id;
@@ -55,8 +48,9 @@ typedef struct {
 } thread_args_transformacion;
 
 master_cfg * crear_config();
-pedido_master * crear_pedido_yama(char ** argv);
+
+struct_file * read_file(char * path);
 int atender_respuesta(void * resp);
-char * read_file(char * path);
+pedido_master * crear_pedido_yama(char ** argv);
 
 #endif /* MASTER_H_ */

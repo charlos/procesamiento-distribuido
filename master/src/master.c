@@ -9,9 +9,6 @@
  */
 
 #include "master.h"
-#include <commons/log.h>
-#include <commons/config.h>
-#include <shared-library/worker-prot.h>
 
 int main(int argc, char ** argv) {
 
@@ -68,7 +65,6 @@ int main(int argc, char ** argv) {
 
 	// REDUCCION LOCAL
 
-
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
 	//connect_send(hora);
@@ -96,24 +92,19 @@ pedido_master * crear_pedido_yama(char ** argv) {
 int atender_respuesta(void * args) {
 	respuesta_yama * respuesta = (respuesta_yama *) args;
 
-	char ** ip_port = string_split(respuesta->ip_port, ":");
-	char * ip = ip_port[0];
-	char * port = ip_port[1];
-	int socket_worker = connect_to_socket(ip, port);
+	ip_port_combo * combo = split_ipport(respuesta->ip_port);
+
+	int socket_worker = connect_to_socket(combo->ip, combo->port);
 	transform_req_send(socket_worker, respuesta->bloque,
 			respuesta->bytes_ocupados, respuesta->archivo_temporal,
-			transformador_file->filesize,transformador_file->file, logger);
+			transformador_file->filesize, transformador_file->file, logger);
 
-	t_request_transformation * worker_response = transform_req_recv(socket_worker, logger);
+	t_request_transformation * worker_response = transform_req_recv(
+			socket_worker, logger);
 
 	// NOTIFICA A YAMA
-	if(worker_response.exec_code == SUCCESS) {
 
-	} else if (worker_response->exec_code == ERROR) {
-
-	}
 }
-
 struct_file * read_file(char * path) {
 	FILE * file;
 	void *buffer = malloc(255);
@@ -122,34 +113,15 @@ struct_file * read_file(char * path) {
 	file = fopen(dir, "r");
 
 	if (file) {
-		char * string = string_new();
-
 		fstat(file, &st);
-//		size_t size = st.st_size;
+		size_t size = st.st_size;
 		struct_file * file_struct = malloc(sizeof(struct_file));
 		file_struct->filesize = st.st_size;
-		file_struct->file = string_new();
+		file_struct->file = malloc(file_struct->filesize);
 
-		/* POR AHORA LO HAGO POR STRING PORQUE NO SE SACAR EL PAGE OFFSET PARA USAR MMAP
-		 *
-		 fstat(file, &st);
-		 size_t size = st.st_size;
-		 void* script;
+		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+				file, 0);
 
-		 script = mmap(NULL, size, PROT_READ, MAP_PRIVATE, file,)
-		 */
-
-		while (fgets(buffer, 255, (FILE*) file)) {
-			string_append(&string, buffer);
-
-		}
-		if (feof(file)) {
-			fclose(file);
-			free(buffer);
-			string_append(&(file_struct->file), string);
-			return file_struct;
-		}
-		return NULL;
 	}
 	return NULL;
 }

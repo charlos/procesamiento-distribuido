@@ -6,17 +6,26 @@
 C_SRCS += \
 ../shared-library/data-node-prot.c \
 ../shared-library/file-system-prot.c \
-../shared-library/socket.c 
+../shared-library/generales.c \
+../shared-library/master-prot.c \
+../shared-library/socket.c \
+../shared-library/worker-prot.c 
 
 OBJS += \
 ./shared-library/data-node-prot.o \
 ./shared-library/file-system-prot.o \
-./shared-library/socket.o 
+./shared-library/generales.o \
+./shared-library/master-prot.o \
+./shared-library/socket.o \
+./shared-library/worker-prot.o 
 
 C_DEPS += \
 ./shared-library/data-node-prot.d \
 ./shared-library/file-system-prot.d \
-./shared-library/socket.d 
+./shared-library/generales.d \
+./shared-library/master-prot.d \
+./shared-library/socket.d \
+./shared-library/worker-prot.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
