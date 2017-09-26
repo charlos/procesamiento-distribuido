@@ -6,6 +6,8 @@
 #ifndef FILE_SYSTEM_H_
 #define FILE_SYSTEM_H_
 
+#define DIR_NAME_LENGTH 	255
+
 typedef struct {
 	uint32_t port;
 	char * mount_point;
@@ -14,14 +16,15 @@ typedef struct {
 
 typedef struct {
 	int index;
-	char name[255];
+	char name[DIR_NAME_LENGTH];
 	int parent_dir;
 } t_fs_directory;
 
 typedef struct {
 	char * node_name;
 	int size;
+	int * fd;
 	t_bitarray * bitmap;
-} t_fs_bitmap_node;
+} t_fs_node;
 
 #endif /* FILE_SYSTEM_H_ */

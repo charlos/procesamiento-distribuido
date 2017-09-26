@@ -16,7 +16,9 @@
 #define	ERROR							-200
 #define	DISCONNECTED_CLIENT			  	-201
 #define	DISCONNECTED_SERVER			   	-202
-#define	ENOSPC						    -203
+#define	ENOSPC						    -203 // no space left on device
+#define ENOENT							-204 // no such file or directory
+#define	ENOTDIR						    -205 // not a directory
 
 /**
  * @NAME fs_recv_operation_code
