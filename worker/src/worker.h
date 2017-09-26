@@ -9,7 +9,18 @@
 #define WORKER_H_
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <commons/log.h>
+#include <commons/string.h>
+#include <shared-library/generales.h>
+#include <shared-library/socket.h>
+#include <shared-library/worker-prot.h>
 
 #define	SOCKET_BACKLOG 			100
 #define BUFFER_SIZE 			2
