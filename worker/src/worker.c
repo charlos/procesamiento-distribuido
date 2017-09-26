@@ -20,6 +20,7 @@ t_worker_conf* worker_conf;
 t_log* logger;
 FILE *fptr;
 void* buffer;
+void * data_bin_mf_ptr;
 
 int main(void) {
 
@@ -33,6 +34,10 @@ int main(void) {
 
 	//Cargar archivo de configuración del nodo
 	load_properties();
+
+	//mapeo el archivo data.bin
+	data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDONLY);
+
 
 	//Crear pipe de comunicación entre padre e hijo
 	pipe(pipe_padreAHijo);
@@ -63,6 +68,8 @@ int main(void) {
 				free(buffer);
 
 				//Leer el archivo data.bin y obtener el bloque pedido
+				buffer = malloc(pedido->used_size);
+				memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (pedido->block)), BLOCK_SIZE);
 
 				break;
 			}

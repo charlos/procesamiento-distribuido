@@ -1,5 +1,47 @@
 #include "data-node-prot.h"
 #include "socket.h"
+#include <fcntl.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <stdarg.h>
+
+/**
+ * @NAME check
+ */
+static void check(int test, const char * message, ...) {
+	if (test) {
+		va_list args;
+		va_start(args, message);
+		vfprintf(stderr, message, args);
+		va_end(args);
+		fprintf(stderr, "\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+/**
+ * @NAME map_file
+ */
+void * map_file(char * file_path, int flags) {
+	struct stat sb;
+	size_t size;
+	int fd; // file descriptor
+	int status;
+
+	fd = open(file_path, flags);
+	check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
+
+	status = fstat(fd, &sb);
+	check(status < 0, "stat %s failed: %s", file_path, strerror (errno));
+	size = sb.st_size;
+
+	void * mapped_file_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	check((mapped_file_ptr == MAP_FAILED), "mmap %s failed: %s", file_path, strerror (errno));
+
+	return mapped_file_ptr;
+}
+
 
 
 /**	╔════════════════════════╗

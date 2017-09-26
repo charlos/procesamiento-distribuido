@@ -19,7 +19,6 @@ void * data_bin_mf_ptr;
 void load_dn_properties(void);
 void create_logger(void);
 void init(void);
-void * map_file(char *);
 void get_block(int *);
 void set_block(int *);
 
@@ -55,41 +54,6 @@ void create_logger(void) {
 	logger = log_create((dn_conf->logfile), "data_node_process", false, LOG_LEVEL_TRACE);
 }
 
-/**
- * @NAME check
- */
-static void check(int test, const char * message, ...) {
-	if (test) {
-		va_list args;
-		va_start(args, message);
-		vfprintf(stderr, message, args);
-		va_end(args);
-		fprintf(stderr, "\n");
-		exit(EXIT_FAILURE);
-	}
-}
-
-/**
- * @NAME map_file
- */
-void * map_file(char * file_path) {
-	struct stat sb;
-	size_t size;
-	int fd; // file descriptor
-	int status;
-
-	fd = open(file_path, O_RDWR);
-	check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
-
-	status = fstat(fd, &sb);
-	check(status < 0, "stat %s failed: %s", file_path, strerror (errno));
-	size = sb.st_size;
-
-	void * mapped_file_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	check((mapped_file_ptr == MAP_FAILED), "mmap %s failed: %s", file_path, strerror (errno));
-
-	return mapped_file_ptr;
-}
 
 /**
  * @NAME init
@@ -109,7 +73,7 @@ void init(void) {
 	fs_socket = connect_to_socket((dn_conf->fs_ip), (dn_conf->fs_port));
 	int resp_code = fs_handshake(fs_socket, 'd', (dn_conf->node_name), blocks, logger);
 
-	data_bin_mf_ptr = map_file(dn_conf->data_bin_path);
+	data_bin_mf_ptr = map_file(dn_conf->data_bin_path, O_RDWR);
 }
 
 /**

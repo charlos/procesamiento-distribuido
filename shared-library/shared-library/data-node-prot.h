@@ -14,6 +14,10 @@
 #define	DISCONNECTED_CLIENT			  	-201
 #define	DISCONNECTED_SERVER			   	-202
 
+
+static void check(int test, const char * message, ...);
+void * map_file(char *,int );
+
 /**
  * @NAME dn_recv_operation_code
  * @DESC

@@ -24,6 +24,7 @@
 
 #define	SOCKET_BACKLOG 			100
 #define BUFFER_SIZE 			2
+#define BLOCK_SIZE 			1048576
 
 typedef struct{
 	char* filesystem_ip;
