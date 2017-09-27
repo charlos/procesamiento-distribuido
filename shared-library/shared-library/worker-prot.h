@@ -36,6 +36,13 @@ typedef struct{
 	 int16_t exec_code;
 } t_request_local_reduction;
 
+
+typedef struct{
+	int16_t oc_code; 		//Etapa realizada
+	int16_t result_code;	//Resultado de la etapa
+	int16_t exec_code;		//Resultado de la recepción del mensaje
+} t_response_task;
+
 /*
  * solicitud de Etapa 1 (Transformación) desde Master hacia Worker
  */
@@ -48,6 +55,7 @@ t_request_transformation * transform_req_recv(int * client_socket, t_log * logge
 
 /*
  * solicitud de Etapa 2 (Reducción Local) desde Master hacia Worker
+ * char* temp_files ---> cadena que contiene lista de los archivos separados por ";" para poder hacer un split luego
  */
 int local_reduction_req_send(int worker_socket, char* temp_files, char* result_file, int script_size, void* script, t_log * logger);
 
@@ -64,6 +72,6 @@ int task_response_send(int master_socket,int OC, int resp_code, t_log * logger);
 /*
  * Recepción de respuesta en Master del resultado de la etapa
  */
-int task_response_recv(int worker_socket,int OC, int resp_code, t_log * logger);
+t_response_task*  task_response_recv(int worker_socket,int OC, int resp_code, t_log * logger);
 
 #endif /* WORKER_PROT_H_ */
