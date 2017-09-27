@@ -1,4 +1,3 @@
-
 #include <commons/log.h>
 #include <commons/collections/list.h>
 #include <commons/collections/node.h>
@@ -11,15 +10,18 @@
 #define UPLOAD_FILE         2
 #define	READ_FILE           3
 #define	GET_METADATA_FILE   4
-
+#define DATANODE 			'd'
+#define YAMA				'y'
+#define WORKER 				'w'
 #define	SUCCESS     				  	   1
 #define	ERROR							-200
 #define	DISCONNECTED_CLIENT			  	-201
 #define	DISCONNECTED_SERVER			   	-202
-#define	ENOSPC						    -203 // no space left on device
-#define ENOENT							-204 // no such file or directory
-#define	ENOTDIR						    -205 // not a directory
-#define	EEXIST						    -206 // file exists
+#define	ALREADY_CONNECTED  				-203 // data-node already connected
+#define	ENOSPC						    -204 // no space left on device
+#define ENOENT							-205 // no such file or directory
+#define	ENOTDIR						    -206 // not a directory
+#define	EEXIST						    -207 // file exists
 
 /**
  * @NAME fs_recv_operation_code

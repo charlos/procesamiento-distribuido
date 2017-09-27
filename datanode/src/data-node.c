@@ -1,4 +1,3 @@
-
 #include <shared-library/data-node-prot.h>
 #include <shared-library/file-system-prot.h>
 #include <commons/config.h>
@@ -19,18 +18,30 @@ void * data_bin_mf_ptr;
 void load_dn_properties(void);
 void create_logger(void);
 void init(void);
-void get_block(int *);
-void set_block(int *);
+void get_block();
+void set_block();
 
 int main(int argc, char * argv[]) {
 	load_dn_properties();
 	create_logger();
 	init();
 
-	//
-	// TODO: FS intergration
-	//
-
+	int ope_code = dn_recv_operation_code(&fs_socket, logger);
+	while (ope_code != DISCONNECTED_CLIENT) {
+		log_info(logger, " client %d >> operation code : %d", fs_socket, ope_code);
+		switch (ope_code) {
+		case GET_BLOCK:
+			get_block();
+			break;
+		case SET_BLOCK:
+			set_block();
+			break;
+		default:;
+		}
+		ope_code = dn_recv_operation_code(&fs_socket, logger);
+	}
+	close_client(fs_socket);
+	return EXIT_SUCCESS;
 }
 
 /**
@@ -54,7 +65,6 @@ void create_logger(void) {
 	logger = log_create((dn_conf->logfile), "data_node_process", false, LOG_LEVEL_TRACE);
 }
 
-
 /**
  * @NAME init
  */
@@ -62,28 +72,28 @@ void init(void) {
 	struct stat sb;
 	if ((stat((dn_conf->data_bin_path), &sb) < 0) || (stat((dn_conf->data_bin_path), &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
 		// TODO: error handler
+		// data.bin not exists
+		exit(EXIT_FAILURE);
 	}
-
 	int file_size = sb.st_size;
 	int blocks = (file_size / BLOCK_SIZE);
-
-	//
-	// TODO: FS intergration
-	//
 	fs_socket = connect_to_socket((dn_conf->fs_ip), (dn_conf->fs_port));
-	int resp_code = fs_handshake(fs_socket, 'd', (dn_conf->node_name), blocks, logger);
-
-	data_bin_mf_ptr = map_file(dn_conf->data_bin_path, O_RDWR);
+	if ((fs_handshake(fs_socket, DATANODE, (dn_conf->node_name), blocks, logger)) != SUCCESS) {
+		// TODO: error handler
+		// fs handshake error
+		exit(EXIT_FAILURE);
+	}
+	data_bin_mf_ptr = map_file(dn_conf->data_bin_path);
 }
 
 /**
  * @NAME get_block
  */
-void get_block(int * client_socket) {
-	t_dn_get_block_req * req = dn_get_block_recv_req(client_socket, logger);
+void get_block() {
+	t_dn_get_block_req * req = dn_get_block_recv_req(&fs_socket, logger);
 	void * buffer = malloc(BLOCK_SIZE);
 	memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (req->block)), BLOCK_SIZE);
-	dn_get_block_send_resp(client_socket, SUCCESS, buffer);
+	dn_get_block_send_resp(&fs_socket, SUCCESS, buffer);
 	free(buffer);
 	free(req);
 }
@@ -91,10 +101,10 @@ void get_block(int * client_socket) {
 /**
  * @NAME set_block
  */
-void set_block(int * client_socket) {
-	t_dn_set_block_req * req = dn_set_block_recv_req(client_socket, logger);
+void set_block() {
+	t_dn_set_block_req * req = dn_set_block_recv_req(&fs_socket, logger);
 	memcpy(data_bin_mf_ptr + (BLOCK_SIZE * (req->block)), (req->buffer), BLOCK_SIZE);
-	dn_set_block_send_resp(client_socket, SUCCESS);
+	dn_set_block_send_resp(&fs_socket, SUCCESS);
 	free(req->buffer);
 	free(req);
 }
