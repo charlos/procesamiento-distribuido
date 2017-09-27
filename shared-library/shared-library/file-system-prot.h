@@ -8,7 +8,7 @@
 #define FILE_SYSTEM_PROTOCOL_H_
 
 #define	FS_HANDSHAKE        1
-#define LOAD_FILE           2
+#define UPLOAD_FILE         2
 #define	READ_FILE           3
 #define	GET_METADATA_FILE   4
 
@@ -19,6 +19,7 @@
 #define	ENOSPC						    -203 // no space left on device
 #define ENOENT							-204 // no such file or directory
 #define	ENOTDIR						    -205 // not a directory
+#define	EEXIST						    -206 // file exists
 
 /**
  * @NAME fs_recv_operation_code
@@ -59,29 +60,30 @@ typedef struct {
 	int16_t exec_code;
 	char * path;
 	char type;
+	int file_size;
 	void * buffer;
-} t_fs_load_file_req;
+} t_fs_upload_file_req;
 
 /**
- * @NAME fs_load_file
+ * @NAME fs_upload_file
  * @DESC
  *
  */
-int fs_load_file(int, char *, char, int, void *, t_log *);
+int fs_upload_file(int, char *, char, int, void *, t_log *);
 
 /**
- * @NAME fs_load_file_recv_req
+ * @NAME fs_upload_file_recv_req
  * @DESC
  *
  */
-t_fs_load_file_req * fs_load_file_recv_req(int *, t_log *);
+t_fs_upload_file_req * fs_upload_file_recv_req(int *, t_log *);
 
 /**
- * @NAME fs_load_file_send_resp
+ * @NAME fs_upload_file_send_resp
  * @DESC
  *
  */
-void fs_load_file_send_resp(int *, int);
+void fs_upload_file_send_resp(int *, int);
 
 typedef struct {
 	int16_t exec_code;

@@ -116,11 +116,11 @@ void fs_handshake_send_resp(int * client_socket, int resp_code) {
 }
 
 
-/**	╔═══════════╗
-	║ LOAD FILE ║
-	╚═══════════╝ **/
+/**	╔═════════════╗
+	║ UPLOAD FILE ║
+	╚═════════════╝ **/
 
-int fs_load_file(int server_socket, char * path, char type, int buffer_size, void * buffer, t_log * logger) {
+int fs_upload_file(int server_socket, char * path, char type, int buffer_size, void * buffer, t_log * logger) {
 
 	/**	╔═════════════════════════╦═════════════════════╦══════╦═══════════════╦════════════════════════╦════════╗
     	║ operation_code (1 byte) ║ path_size (4 bytes) ║ path ║ type (1 byte) ║ buffer_size (4 bytes)  ║ buffer ║
@@ -130,7 +130,7 @@ int fs_load_file(int server_socket, char * path, char type, int buffer_size, voi
 	uint8_t prot_type = 1;
 	uint8_t prot_buffer_size = 4;
 
-	uint8_t  req_ope_code = LOAD_FILE;
+	uint8_t  req_ope_code = UPLOAD_FILE;
 	uint32_t req_path_size = strlen(path) + 1;
 	uint8_t req_ope_type = type;
 	uint32_t req_buffer_size = buffer_size;
@@ -156,8 +156,8 @@ int fs_load_file(int server_socket, char * path, char type, int buffer_size, voi
 	return code;
 }
 
-t_fs_load_file_req * fs_load_file_recv_req(int * client_socket, t_log * logger) {
-	t_fs_load_file_req * request = malloc(sizeof(t_fs_load_file_req));
+t_fs_upload_file_req * fs_upload_file_recv_req(int * client_socket, t_log * logger) {
+	t_fs_upload_file_req * request = malloc(sizeof(t_fs_upload_file_req));
 	uint8_t prot_path_size = 4;
 	uint32_t path_size;
 	int received_bytes = socket_recv(client_socket, &path_size, prot_path_size);
@@ -181,15 +181,14 @@ t_fs_load_file_req * fs_load_file_recv_req(int * client_socket, t_log * logger) 
 		return request;
 	}
 	uint8_t prot_buffer_size = 4;
-	uint32_t buffer_size;
-	received_bytes = socket_recv(client_socket, &buffer_size, prot_buffer_size);
+	received_bytes = socket_recv(client_socket, &(request->file_size), prot_buffer_size);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
-	request->buffer = malloc(sizeof(char) * buffer_size);
-	received_bytes = socket_recv(client_socket, (request->buffer), buffer_size);
+	request->buffer = malloc(sizeof(char) * (request->file_size));
+	received_bytes = socket_recv(client_socket, (request->buffer), (request->file_size));
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
@@ -199,7 +198,7 @@ t_fs_load_file_req * fs_load_file_recv_req(int * client_socket, t_log * logger) 
 	return request;
 }
 
-void fs_load_file_send_resp(int * client_socket, int resp_code) {
+void fs_upload_file_send_resp(int * client_socket, int resp_code) {
 	uint8_t resp_prot_code = 2;
 	int response_size = sizeof(char) * (resp_prot_code);
 	void * response = malloc(response_size);
