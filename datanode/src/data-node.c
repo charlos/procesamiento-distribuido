@@ -15,14 +15,14 @@ t_log * logger;
 int fs_socket;
 void * data_bin_mf_ptr;
 
-void load_dn_properties(void);
+void load_dn_properties(char *);
 void create_logger(void);
 void init(void);
 void get_block();
 void set_block();
 
 int main(int argc, char * argv[]) {
-	load_dn_properties();
+	load_dn_properties(argv[1]); // TODO
 	create_logger();
 	init();
 
@@ -47,8 +47,9 @@ int main(int argc, char * argv[]) {
 /**
  * @NAME load_dn_properties
  */
-void load_dn_properties(void) {
-	t_config * conf = config_create("/home/utnso/node.cfg");
+void load_dn_properties(char * cfg_path) {
+	//t_config * conf = config_create("/home/utnso/node.cfg"); // TODO
+	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = config_get_string_value(conf, "NOMBRE_NODO");
 	dn_conf->port = config_get_string_value(conf, "PUERTO_DATANODE");

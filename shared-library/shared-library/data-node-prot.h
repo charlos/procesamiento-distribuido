@@ -19,7 +19,7 @@
  * @DESC
  *
  */
-void * map_file(char *);
+void * map_file(char *, int);
 
 /**
  * @NAME unmap_file

@@ -19,14 +19,15 @@ int status;
 t_worker_conf* worker_conf;
 t_log* logger;
 FILE *fptr;
-void* buffer;
 void * data_bin_mf_ptr;
 
 int main(void) {
 
-	char* buffer=malloc(BUFFER_SIZE);
+	void* buffer;
+	int buffer_size;
 	uint8_t task_code;
 	char* script_filename = string_duplicate("/tmp/script/script.sh");
+	char* instruccion = string_new();
 
 	//Crear log
 	crear_logger("./worker", &logger, true, LOG_LEVEL_TRACE);
@@ -37,7 +38,6 @@ int main(void) {
 
 	//mapeo el archivo data.bin
 	data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDONLY);
-
 
 	//Crear pipe de comunicación entre padre e hijo
 	pipe(pipe_padreAHijo);
@@ -58,25 +58,25 @@ int main(void) {
 		switch (task_code) {
 			case TRANSFORM_OC:{
 				t_request_transformation* pedido = transform_req_recv(new_socket, logger);
-				//Creo el archivo y guardo el script a ejecutar
-				fptr = fopen(script_filename, O_RDWR | O_CREAT | O_SYNC);
-				buffer = malloc(pedido->script_size);
-				memcpy(buffer,pedido->script,pedido->script_size);
-				fputs(buffer,fptr);
-				fflush(fptr);
-				fclose(fptr);
-				free(buffer);
+				if (pedido->exec_code == SUCCESS){
+					//Creo el archivo y guardo el script a ejecutar
 
-				//Leer el archivo data.bin y obtener el bloque pedido
-				buffer = malloc(pedido->used_size);
-				memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (pedido->block)), BLOCK_SIZE);
+					buffer_size = pedido->used_size;
+					//Leer el archivo data.bin y obtener el bloque pedido
+					buffer = malloc(buffer_size);
+					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (pedido->block)), buffer_size);
 
+					string_append(&instruccion, script_filename);
+					string_append(&instruccion, "|sort");
+
+				}
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
 
 				t_request_local_reduction* pedido = local_reduction_req_recv(new_socket, logger);
-
+				char** temp_files = string_split(pedido->temp_files, " ");
+				free(pedido);
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
@@ -90,16 +90,16 @@ int main(void) {
 		  if ((pid=fork()) == 0 ){
 			  log_trace(logger, "Proceso Hijo PID %d (PID del padre: %d)",getpid(),getppid());
 
-			  //dup2(pipe_padreAHijo[0],STDIN_FILENO);
+			  dup2(pipe_padreAHijo[0],STDIN_FILENO);
 			  dup2(pipe_hijoAPadre[1],STDOUT_FILENO);
 
-			  read( pipe_padreAHijo[0], buffer, 2 );  //BUFFER_SIZE
+			  //read( pipe_padreAHijo[0], buffer, buffer_size );
 
 			  close( pipe_padreAHijo[1]);
 			  close( pipe_padreAHijo[0]);
 			  close( pipe_hijoAPadre[0]);
 			  close( pipe_hijoAPadre[1]);
-			  log_trace(logger, "lo que se lee de pipe: %s", buffer);
+			  //log_trace(logger, "lo que se lee de pipe: %s", buffer);
 
 			  //Para correr el script de transformacion/reduccion/lukivenga
 		      char *argv[] = {NULL};
@@ -117,7 +117,7 @@ int main(void) {
 			  //path del script a ejecutar es fijo, los datos sobre los que trabajará ese script van por entarda standard se le pasan por pipe
 			  // y el nombre del archivo resultado lo usamos en padre al terminar hijo
 			  // t_pedido_transformacion
-			  write( pipe_padreAHijo[1],"ex",BUFFER_SIZE);
+			  write( pipe_padreAHijo[1],"ex",buffer_size);
 
 			  close( pipe_padreAHijo[1]);
 			    /*Ya esta, como termine de escribir cierro esta parte del pipe*/
@@ -126,7 +126,7 @@ int main(void) {
 			  waitpid(pid,&status,0);
 
 			  // Leo el resultado del proceso hijo, él lo saca por salida standard, que nosotros hicimos que fuera el pipe
-		      read( pipe_hijoAPadre[0], buffer, BUFFER_SIZE );
+		      read( pipe_hijoAPadre[0], buffer, buffer_size );
 
 		      log_trace(logger, "Lo que el hijo nos dejo:  %s",buffer);
 
