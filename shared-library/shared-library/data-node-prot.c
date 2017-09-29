@@ -17,13 +17,13 @@ static void check(int test, const char * message, ...) {
 	}
 }
 
-void * map_file(char * file_path) {
+void * map_file(char * file_path, int flags) {
 	struct stat sb;
 	size_t size;
 	int fd; // file descriptor
 	int status;
 
-	fd = open(file_path, O_RDWR);
+	fd = open(file_path, flags);
 	check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
 
 	status = fstat(fd, &sb);

@@ -29,7 +29,6 @@
 #define UNSTEADY				'u'
 #define BINARY 					'b'
 #define TEXT 					't'
-#define BINARY_EXT 				"bin"
 
 int listenning_socket;
 t_fs_conf * fs_conf;
@@ -42,9 +41,11 @@ t_list * nodes_list;		// nodes list
 
 pthread_rwlock_t * directories_locks;
 pthread_mutex_t nodes_table_m_lock;
-pthread_mutex_t state_m_lock;
 
+void write_txt_file(void *, int, t_config *);
+void write_binary_file(void *, int, t_config *);
 void upload_file(int *);
+void set_file_block(t_config *, int, void *);
 void read_file(int *);
 void process_request(int *);
 void load_fs_properties(void);
@@ -63,16 +64,17 @@ t_config * create_metadata_file(char *, int, int, char);
 int uploading_file(t_fs_upload_file_req * req);
 int rw_lock_unlock(pthread_rwlock_t *, int, int);
 int load_bitmap_node(int *, bool, char *, int);
-int get_line_length(int, char *, int);
+int get_line_length(char *, int, int);
 int connect_node(int *, char *, int);
 int calc_required_blocks_for_txt_file(char *, int);
 int assign_node_block(char *);
 int assign_blocks_to_file(t_config *, int);
-char * get_file_ext(char *);
+int * get_datanode_fd(char *);
 char * assign_node(char *);
 
 int main(int argc, char * argv[]) {
 	bool clean_fs = true; // TODO: add clean flag
+
 	load_fs_properties();
 	create_logger();
 	init(clean_fs);
@@ -178,7 +180,7 @@ void init(bool clean_fs) {
 		fclose(dir_file);
 	}
 
-	directories_mf_ptr = map_file(directories_file_path);
+	directories_mf_ptr = map_file(directories_file_path, O_RDWR);
 
 	// nodes file
 	char * nodes_table_file_path = string_from_format("%s/nodos.bin", metadata_path);
@@ -227,7 +229,7 @@ void clean_dir(char * dir_path) {
 			free(ent_path);
 		}
 	}
-	closedir(dir_path);
+	closedir(dir);
 }
 
 /**
@@ -240,7 +242,6 @@ void init_locks(void) {
 		check((pthread_rwlock_init(directories_locks + i, NULL) != 0), "Error starting cache memory rw lock %d", i);
 	}
 	pthread_mutex_init(&nodes_table_m_lock, NULL);
-	pthread_mutex_init(&state_m_lock, NULL);
 }
 
 /**
@@ -287,7 +288,6 @@ void process_request(int * client_socket) {
 	}
 	close_client(* client_socket);
 	free(client_socket);
-	return;
 }
 
 /**
@@ -442,7 +442,7 @@ int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, int blo
 		return ALREADY_CONNECTED;
 
 	char * bitmap_file_path = string_from_format("%s/metadata/bitmaps/%s.bin", (fs_conf->mount_point), node_name);
-	t_bitarray * bitmap = bitarray_create_with_mode(map_file(bitmap_file_path), blocks, MSB_FIRST);
+	t_bitarray * bitmap = bitarray_create_with_mode(map_file(bitmap_file_path, O_RDWR), blocks, MSB_FIRST);
 	if (clean_bitmap) {
 		int pos = 0;
 		while (pos < blocks) {
@@ -536,17 +536,14 @@ void check_fs_status(void) {
 		rw_lock_unlock(directories_locks, UNLOCK, index);
 
 		if (!empty_dir && !all_nodes_connected) {
-			pthread_mutex_lock(&state_m_lock);
 			status = UNSTEADY;
-			pthread_mutex_unlock(&state_m_lock);
 			return;
 		}
 		index++;
 		fs_dir++;
 	}
-	pthread_mutex_lock(&state_m_lock);
-	status = STEADY;
-	pthread_mutex_unlock(&state_m_lock);
+	if (nodes_list->elements_count > 1)
+		status = STEADY; // at least two connected nodes
 }
 
 /**
@@ -659,39 +656,33 @@ void fs_console(void * unused) {
 /**
  * @NAME cpfrom
  */
-void cpfrom(char * file_path, char * yamafs_dir) {
+void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	struct stat sb;
 	if ((stat(file_path, &sb) < 0) || (stat(file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
-		// TODO: exception message
-		// file not exists
+		printf("file wasn't uploaded successfully: file doesn't exist\nplease try again...\n");
 		return;
 	}
 
 	char * file_path_c = string_duplicate(file_path);
 	char * file_name = basename(file_path_c);
-	char * file_ext = get_file_ext(file_name);
 
 	t_fs_upload_file_req * req = malloc(sizeof(t_fs_upload_file_req));
 	req->path = string_new();
 	string_append((req->path), yamafs_dir);
 	string_append((req->path), file_name);
 	req->file_size = sb.st_size;
-	req->type = (file_ext != BINARY_EXT) ? BINARY: TEXT;
-	req->buffer = map_file(file_path);
+	req->type = type;
+	req->buffer = map_file(file_path, O_RDWR);
 
-	int exec = uploading_file(req);
-
-	switch (exec) {
+	switch (uploading_file(req)) {
 	case SUCCESS:
-		// TODO: success message
+		printf("file uploaded successfully!\n");
 		break;
 	case ENOTDIR:
-		// TODO: exception message
-		// yamafs dir not exists
+		printf("file wasn't uploaded successfully: yamafs dir not exists\nplease try again...\n");
 		break;
 	case EEXIST:
-		// TODO: exception message
-		// file exists
+		printf("file wasn't uploaded successfully: file already exists in yamafs\nplease try again...\n");
 		break;
 	default:;
 	}
@@ -701,16 +692,6 @@ void cpfrom(char * file_path, char * yamafs_dir) {
 	free(req->path);
 	free(req);
 	free(file_path_c);
-}
-
-/**
- * @NAME get_file_ext
- */
-char * get_file_ext(char * file_name) {
-	char * dot = strrchr(file_name, '.');
-	if (!dot || dot == file_name)
-		return "";
-	return dot + 1;
 }
 
 /**
@@ -750,8 +731,20 @@ int uploading_file(t_fs_upload_file_req * req) {
 
 	if (exec == SUCCESS) {
 		//
-		// TODO: load file to data-nodes
+		// writing file
 		//
+		pthread_mutex_lock(&nodes_table_m_lock);
+		switch (req->type) {
+		case BINARY:
+			write_binary_file((req->buffer), (req->file_size), file_md);
+			break;
+		case TEXT:
+			write_txt_file((req->buffer), (req->file_size), file_md);
+			break;
+		default:;
+		}
+		pthread_mutex_unlock(&nodes_table_m_lock);
+
 	} else {
 		char * file_md_path = string_duplicate(file_md->path);
 		config_destroy(file_md);
@@ -812,34 +805,33 @@ int get_dir_index_from_table(char * dir, int parent_index, int lock_type) {
 /**
  * @NAME calc_required_blocks_for_txt_file
  */
-int calc_required_blocks_for_txt_file(char * buffer, int buffer_size) {
+int calc_required_blocks_for_txt_file(char * file, int file_size) {
 	int required_blocks = 0;
-	int busy_space = 0;
+	int stored = 0;
 	int line_size;
-	int pos = 0;
-	while (pos < buffer_size) {
-		line_size = get_line_length(pos, buffer, buffer_size);
-		busy_space += line_size;
-		if (busy_space > BLOCK_SIZE) {
+	int file_pos = 0;
+	while (file_pos < file_size) {
+		line_size = get_line_length(file, file_pos, file_size);
+		stored += line_size;
+		if (stored > BLOCK_SIZE) {
 			required_blocks++;
-			busy_space = line_size;
+			stored = line_size;
 		}
-		pos += line_size;
+		file_pos += line_size;
 	}
 	required_blocks++;
 	return required_blocks;
-
 }
 
 /**
  * @NAME get_line_length
  */
-int get_line_length(int pos, char * buffer, int buffer_size) {
+int get_line_length(char * file, int file_pos, int file_size) {
 	int j = 0;
-	int i = pos;
-	while (i  < buffer_size) {
+	int i = file_pos;
+	while (i  < file_size) {
 		j++;
-		if (buffer[i] == '\n')
+		if (file[i] == '\n')
 			break;
 		i++;
 	}
@@ -998,8 +990,97 @@ int assign_node_block(char * node_name) {
 	return block;
 }
 
+/**
+ * @NAME write_binary_file
+ */
+void write_binary_file(void * file, int file_size, t_config * md_file) {
+	void * block = malloc(BLOCK_SIZE);
 
+	int bytes_to_write = file_size;
+	int bytes_writing;
+	int block_number = 0;
+	while (bytes_to_write > 0) {
+		bytes_writing = (bytes_to_write >= BLOCK_SIZE) ? BLOCK_SIZE : bytes_to_write;
+		memset(block, 0, BLOCK_SIZE);
+		memcpy(block, file + (block_number * BLOCK_SIZE), bytes_writing);
+		set_file_block(md_file, block_number, block);
+		block_number++;
+		bytes_to_write -= BLOCK_SIZE;
+	}
 
+	free(block);
+}
+
+/**
+ * @NAME write_txt_file
+ */
+void write_txt_file(void * file, int file_size, t_config * md_file) {
+	void * block = malloc(BLOCK_SIZE);
+
+	int block_number = 0;
+	int line_size;
+	int stored = 0;
+	int file_pos = 0;
+	int file_cpy_pos = 0;
+	int cpy_size = 0;
+	while (file_pos < file_size) {
+		line_size = get_line_length(file, file_pos, file_size);
+		stored += line_size;
+		if (stored <= BLOCK_SIZE) {
+			file_pos += line_size;
+			cpy_size += line_size;
+		} else {
+			memset(block, 0, BLOCK_SIZE);
+			memcpy(block, file + file_cpy_pos, cpy_size);
+			set_file_block(md_file, block_number, block);
+			file_cpy_pos += cpy_size;
+			block_number++;
+			stored = 0;
+			cpy_size = 0;
+		}
+	}
+	memset(block, 0, BLOCK_SIZE);
+	memcpy(block, file + file_cpy_pos, cpy_size);
+	set_file_block(md_file, block_number, block);
+
+	free(block);
+}
+
+/**
+ * @NAME set_file_block
+ */
+void set_file_block(t_config * file, int block_number, void * block) {
+	char key = string_from_format("BLOQUE%dCOPIA0", block_number);
+	char ** values = config_get_array_value(file, key);
+	dn_set_block(get_datanode_fd(values[0]), atoi(values[1]), block, logger);
+	free(values[0]);
+	free(values[1]);
+	free(values);
+	free(key);
+
+	key = string_from_format("BLOQUE%dCOPIA1", block_number);
+	values = config_get_array_value(file, key);
+	dn_set_block(get_datanode_fd(values[0]), atoi(values[1]), block, logger);
+	free(values[0]);
+	free(values[1]);
+	free(values);
+	free(key);
+}
+
+/**
+ * @NAME get_datanode_fd
+ */
+int * get_datanode_fd(char * node_name) {
+	t_fs_node * node;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node_name, (node->node_name)) == 0) {
+			return node->fd;
+		}
+		index++;
+	}
+}
 
 
 
@@ -1017,17 +1098,21 @@ int assign_node_block(char * node_name) {
 
 
 //
-// TODO: al crear un directoio se debe crear el directorio para los archivos del directorio (ejemplo: metadata/archivos/5/ejemplo.csv)
+// TODO: ¿Que sucede al desconectar un nodo?
 //
 
 //
-// Para verificar:
+// TODO: al crear un directorio se debe crear el directorio para los archivos del directorio (ejemplo: metadata/archivos/5/ejemplo.csv)
 //
-// Si el FS que se levanta, corresponde a un estado anterior,
-// se debe verificar que el nombre de los archivos bitmap sean igual al configurado como nombre del nodo en Data-Node
+
+//
+// Implementación:
+//
+// Si el FS que se levanta, corresponde a un estado anterior, se debe verificar que el nombre de los archivos bitmap
+// sean igual al configurado como nombre del nodo en Data-Node
 
 
-
+//
 // http://www.chuidiang.org/clinux/sockets/socketselect.php
 // http://www.delorie.com/djgpp/doc/libc/libc_646.html
 // https://www.lemoda.net/c/recursive-directory/
