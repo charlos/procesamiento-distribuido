@@ -105,8 +105,8 @@ int main(int argc, char * argv[]) {
 				fs_handshake_send_resp(new_client, hs_result);
 				if (hs_result != SUCCESS) {
 					close_client(* new_client);
+					free(new_client);
 				}
-				free(new_client);
 				free(hs_req->node_name);
 				free(hs_req);
 				continue;
@@ -671,7 +671,7 @@ void fs_console(void * unused) { // TODO
 //			token = strtok(NULL, " ");
 //			if (token != NULL) param03 = token;
 
-			cpfrom("/home/utnso/yamafs.txt", "/", TEXT);
+			cpfrom("/home/utnso/MOCK_DATA.csv", "/", TEXT);
 
 		}
 	}
@@ -712,7 +712,6 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	}
 
 	unmap_file(req->buffer, req->file_size);
-	free(req->buffer);
 	free(req->path);
 	free(req);
 	free(file_path_c);

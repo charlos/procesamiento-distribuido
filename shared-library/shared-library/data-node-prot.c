@@ -104,7 +104,7 @@ int dn_get_block(int server_socket, int block, t_log * logger) {
 t_dn_get_block_req * dn_get_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_get_block_req * request = malloc(sizeof(t_dn_get_block_req));
 	uint8_t prot_block = 4;
-	int received_bytes = socket_recv(client_socket, (request->block), prot_block);
+	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
@@ -164,12 +164,13 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 t_dn_set_block_req * dn_set_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_set_block_req * request = malloc(sizeof(t_dn_set_block_req));
 	uint8_t prot_block = 4;
-	int received_bytes = socket_recv(client_socket, (request->block), prot_block);
+	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
+	request->buffer = malloc(BLOCK_SIZE);
 	received_bytes = socket_recv(client_socket, (request->buffer), BLOCK_SIZE);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
