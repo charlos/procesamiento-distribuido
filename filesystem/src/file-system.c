@@ -1021,15 +1021,15 @@ int assign_node_block(char * node_name) {
 void write_file(void * file, t_config * md_file, int file_size, t_list * required_blocks) {
 	void * block = malloc(BLOCK_SIZE);
 	t_fs_required_block * required_block;
-	int bytes_to_write = file_size;
+	int writed_bytes = 0;
 
 	int index = 0;
-	while ((bytes_to_write > 0) && (index < (required_blocks->elements_count))) {
+	while ((writed_bytes <= file_size) && (index < (required_blocks->elements_count))) {
 		required_block = (t_fs_required_block *) list_get(required_blocks, index);
 		memset(block, 0, BLOCK_SIZE);
 		memcpy(block, file + (required_block->block), (required_block->bytes));
 		set_file_block(md_file, (required_block->block), block);
-		bytes_to_write -= (required_block->bytes);
+		writed_bytes += (required_block->bytes);
 		index++;
 	}
 	free(block);
