@@ -60,6 +60,7 @@ int main(void) {
 				t_request_transformation* pedido = transform_req_recv(new_socket, logger);
 				if (pedido->exec_code == SUCCESS){
 					//Creo el archivo y guardo el script a ejecutar
+					create_script_file(script_filename, pedido->script_size, pedido->script );
 
 					buffer_size = pedido->used_size;
 					//Leer el archivo data.bin y obtener el bloque pedido
@@ -76,11 +77,12 @@ int main(void) {
 
 				t_request_local_reduction* pedido = local_reduction_req_recv(new_socket, logger);
 				char** temp_files = string_split(pedido->temp_files, " ");
-				free(pedido);
+				//free(pedido);
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
 			case STORAGE_OC:
+			case REQUEST_TEMP_FILE:
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
@@ -117,7 +119,7 @@ int main(void) {
 			  //path del script a ejecutar es fijo, los datos sobre los que trabajará ese script van por entarda standard se le pasan por pipe
 			  // y el nombre del archivo resultado lo usamos en padre al terminar hijo
 			  // t_pedido_transformacion
-			  write( pipe_padreAHijo[1],"ex",buffer_size);
+			 // write( pipe_padreAHijo[1],"ex",buffer_size);
 
 			  close( pipe_padreAHijo[1]);
 			    /*Ya esta, como termine de escribir cierro esta parte del pipe*/
