@@ -1,0 +1,17 @@
+>> connect_node
+  pthread_mutex_lock(&nodes_table_m_lock);
+    >> add_node
+        _nodes_table
+    >> create_bitmap_for_node
+    >> load_bitmap_node
+        _nodes_list
+    >> check_fs_status
+        _directories_locks
+        _nodes_list
+  pthread_mutex_unlock(&nodes_table_m_lock);
+
+
+
+
+
+  

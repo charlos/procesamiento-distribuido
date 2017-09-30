@@ -140,7 +140,7 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_block = 4;
 
-	uint8_t req_ope_code = GET_BLOCK;
+	uint8_t req_ope_code = SET_BLOCK;
 	uint32_t req_block = block;
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_block + BLOCK_SIZE);

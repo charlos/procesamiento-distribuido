@@ -23,8 +23,13 @@ typedef struct {
 typedef struct {
 	char * node_name;
 	int size;
-	int * fd;
+	int fd;
 	t_bitarray * bitmap;
 } t_fs_node;
+
+typedef struct {
+	int block;
+	int bytes;
+} t_fs_required_block;
 
 #endif /* FILE_SYSTEM_H_ */

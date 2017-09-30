@@ -84,7 +84,7 @@ void init(void) {
 		// fs handshake error
 		exit(EXIT_FAILURE);
 	}
-	data_bin_mf_ptr = map_file(dn_conf->data_bin_path);
+	data_bin_mf_ptr = map_file(dn_conf->data_bin_path, O_RDWR);
 }
 
 /**
