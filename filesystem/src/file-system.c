@@ -1027,7 +1027,7 @@ void write_file(void * file, t_config * md_file, int file_size, t_list * require
 	while ((writed_bytes <= file_size) && (index < (required_blocks->elements_count))) {
 		required_block = (t_fs_required_block *) list_get(required_blocks, index);
 		memset(block, 0, BLOCK_SIZE);
-		memcpy(block, file + (required_block->block), (required_block->bytes));
+		memcpy(block, file + writed_bytes, (required_block->bytes));
 		set_file_block(md_file, (required_block->block), block);
 		writed_bytes += (required_block->bytes);
 		index++;
