@@ -22,6 +22,7 @@
 #define ENOENT							-205 // no such file or directory
 #define	ENOTDIR						    -206 // not a directory
 #define	EEXIST						    -207 // file exists
+#define	CORRUPTED_FILE					-208 // corrupted file
 
 /**
  * @NAME fs_recv_operation_code

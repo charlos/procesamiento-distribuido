@@ -69,6 +69,11 @@ int assign_node_block(char *);
 int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
 int get_datanode_fd(char *);
 char * assign_node(char *);
+void cpto(char *, char *);
+void cpfrom(char *, char *, char);
+int get_dir_index(char *, int);
+int get_dir_index_from_table(char *, int, int);
+int cpy_to_local_dir(char *, char *, char *);
 
 int main(int argc, char * argv[]) {
 	bool clean_fs = true; // TODO: add clean flag
@@ -677,6 +682,13 @@ void fs_console(void * unused) { // TODO
 	}
 }
 
+
+
+
+//	╔══════════════════════════════════════════════════════════════╗
+//	║ COMMAND: CPFROM                                              ║
+//	╚══════════════════════════════════════════════════════════════╝
+
 /**
  * @NAME cpfrom
  */
@@ -721,8 +733,6 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
  * @NAME uploading_file
  */
 int uploading_file(t_fs_upload_file_req * req) {
-	struct stat sb;
-
 	char * dir_c = string_duplicate(req->path);
 	char * base_c = string_duplicate(req->path);
 
@@ -736,10 +746,11 @@ int uploading_file(t_fs_upload_file_req * req) {
 		return ENOTDIR;
 	}
 
-	char * metadata_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, file);
-	if ((stat(metadata_file_path, &sb) == 0) && (S_ISREG(sb.st_mode))) {
+	struct stat sb;
+	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, file);
+	if ((stat(md_file_path, &sb) == 0) && (S_ISREG(sb.st_mode))) {
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-		free(metadata_file_path);
+		free(md_file_path);
 		free(base_c);
 		free(dir_c);
 		return EEXIST;
@@ -766,7 +777,7 @@ int uploading_file(t_fs_upload_file_req * req) {
 
 	list_destroy_and_destroy_elements(required_blocks, &closure);
 	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-	free(metadata_file_path);
+	free(md_file_path);
 	free(base_c);
 	free(dir_c);
 	return exec;
@@ -1069,6 +1080,129 @@ int get_datanode_fd(char * node_name) {
 		index++;
 	}
 	return ERROR;
+}
+
+
+
+
+//	╔══════════════════════════════════════════════════════════════╗
+//	║ COMMAND: CPTO                                                ║
+//	╚══════════════════════════════════════════════════════════════╝
+
+/**
+ * @NAME cpto
+ */
+void cpto(char * yamafs_file_path, char * local_dir) {
+  struct stat sb;
+  if ((stat(local_dir, &sb) < 0) || (stat(local_dir, &sb) == 0 && !(S_ISDIR(sb.st_mode)))) {
+    printf("file wasn't copied successfully: local directory doesn't exist\nplease try again...\n");
+    return;
+  }
+
+  char * dir_c = string_duplicate(yamafs_file_path);
+  char * base_c = string_duplicate(yamafs_file_path);
+  char * yamafs_dir = dirname(dir_c);
+  char * yamafs_file = basename(base_c);
+
+  int dir_index = get_dir_index(yamafs_dir, LOCK_READ);
+  if (dir_index == ENOTDIR) {
+    free(dir_c);
+    free(base_c);
+    printf("file wasn't copied successfully: file doesn't exist\nplease try again...\n");
+    return;
+  }
+
+  char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, yamafs_file);
+  if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+    rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+    free(md_file_path);
+    free(dir_c);
+    free(base_c);
+    printf("file wasn't copied successfully: file doesn't exist\nplease try again...\n");
+    return;
+  }
+
+  switch (cpy_to_local_dir(md_file_path, local_dir, yamafs_file)) {
+	case SUCCESS:
+		printf("file copied successfully!\n");
+		break;
+	case CORRUPTED_FILE:
+		printf("corrupted file\n");
+		break;
+	default:;
+	}
+
+  rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+  free(md_file_path);
+  free(dir_c);
+  free(base_c);
+}
+
+/**
+ * @NAME cpy_to_local_dir
+ */
+int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) {
+  t_config * md_file = config_create(md_file_path);
+  int file_size = config_get_int_value(md_file, "TAMANIO");
+
+  char * local_file_path = string_from_format("%s/%s", local_dir, yamafs_file);
+  FILE * fs_file = fopen(local_file_path, "wb");
+
+  char * cpy0_key;
+  char * cpy1_key;
+  char * bytes_key;
+  char ** values;
+  int datanode_fd;
+  int bytes;
+  t_dn_get_block_resp * dn_block;
+
+  pthread_mutex_lock(&nodes_table_m_lock);
+  int readed_bytes = 0;
+  int block = 0;
+  while (readed_bytes < file_size) {
+
+    cpy0_key = string_from_format("BLOQUE%dCOPIA0", block);
+    cpy1_key = string_from_format("BLOQUE%dCOPIA1", block);
+    bytes_key = string_from_format("BLOQUE%dBYTES", block);
+
+    if (config_has_property(md_file, cpy0_key)) {
+      values = config_get_array_value(md_file, cpy0_key);
+    } else if (config_has_property(md_file, cpy1_key)) {
+      values = config_get_array_value(md_file, cpy1_key);
+    } else {
+      free(bytes_key);
+      free(cpy1_key);
+      free(cpy0_key);
+      break;
+    }
+
+    bytes = config_get_int_value(md_file, bytes_key);
+    datanode_fd = get_datanode_fd(values[0]);
+    dn_block = dn_get_block(datanode_fd, atoi(values[1]), logger);
+    fwrite((dn_block->buffer), bytes, 1, fs_file);
+    readed_bytes += bytes;
+
+    free(dn_block->buffer);
+    free(dn_block);
+    free(values[0]);
+    free(values[1]);
+    free(values);
+    free(bytes_key);
+    free(cpy1_key);
+    free(cpy0_key);
+    block++;
+  }
+  pthread_mutex_unlock(&nodes_table_m_lock);
+
+  fclose(fs_file);
+  config_destroy(md_file);
+  if (readed_bytes < file_size) {
+    remove(local_file_path);
+    free(local_file_path);
+    return CORRUPTED_FILE;
+  }
+  free(local_file_path);
+  return SUCCESS;
 }
 
 

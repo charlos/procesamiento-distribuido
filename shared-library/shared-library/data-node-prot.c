@@ -61,7 +61,7 @@ int dn_recv_operation_code(int * client_socket, t_log * logger) {
 	║ GET BLOCK ║
 	╚═══════════╝ **/
 
-int dn_get_block(int server_socket, int block, t_log * logger) {
+t_dn_get_block_resp * dn_get_block(int server_socket, int block, t_log * logger) {
 
 	/**	╔═════════════════════════╦═══════════════════════╗
 		║ operation_code (1 byte) ║ block number (4 byte) ║

@@ -1,17 +1,43 @@
 >> connect_node
-  pthread_mutex_lock(&nodes_table_m_lock);
-    >> add_node
+    pthread_mutex_lock(&nodes_table_m_lock);
+      >> add_node
         _nodes_table
-    >> create_bitmap_for_node
-    >> load_bitmap_node
+      >> create_bitmap_for_node
+      >> load_bitmap_node
         _nodes_list
-    >> check_fs_status
+      >> check_fs_status
         _directories_locks
         _nodes_list
-  pthread_mutex_unlock(&nodes_table_m_lock);
+    pthread_mutex_unlock(&nodes_table_m_lock);
 
 
 
+>> uploading_file
+    >> get_dir_index
+    >> calc_required_blocks_for_txt_file
+    OR
+    >> calc_required_blocks_for_binary_file
+
+    pthread_mutex_lock(&nodes_table_m_lock);
+      >> assign_blocks_to_file
+        >> assign_node
+          _nodes_list
+          _nodes_table
+        >> assign_node_block
+          _nodes_list
+      >> write_file
+        >> set_file_block
+          >> get_datanode_fd
+            _nodes_list
+    pthread_mutex_unlock(&nodes_table_m_lock);
 
 
-  
+
+>> cpto
+  >> get_dir_index
+  >> cpy_to_local_dir
+    pthread_mutex_lock(&nodes_table_m_lock);
+      >> get_datanode_fd
+        _nodes_list
+      >> dn_get_block
+    pthread_mutex_unlock(&nodes_table_m_lock);
