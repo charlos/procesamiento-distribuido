@@ -677,6 +677,7 @@ void fs_console(void * unused) { // TODO
 //			if (token != NULL) param03 = token;
 
 			cpfrom("/home/utnso/MOCK_DATA.csv", "/", TEXT);
+			cpto("/MOCK_DATA.csv", "/home/utnso/cpto");
 
 		}
 	}
