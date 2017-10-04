@@ -698,9 +698,13 @@ void fs_console(void * unused) { // TODO
 //		}
 	while(1){
 		char* line = readline("Ingrese comando:\n>");
-		if((strcmp(line, "exit") == 0) || (!line))break;
+		if(strcmp(line, "exit") == 0){
+			free(line);
+			break;
+		}
 		int a = execute_line(line);
 		if (line) add_history(line);
+		free(line);
 	}
 }
 
