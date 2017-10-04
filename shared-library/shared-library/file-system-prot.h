@@ -6,6 +6,7 @@
 #ifndef FILE_SYSTEM_PROTOCOL_H_
 #define FILE_SYSTEM_PROTOCOL_H_
 
+#define NODE_NAME_LENGTH 	10
 #define	FS_HANDSHAKE        1
 #define UPLOAD_FILE         2
 #define	READ_FILE           3
@@ -122,10 +123,10 @@ void fs_read_file_send_resp(int *, int, int, void *);
 
 typedef struct {
 	uint32_t file_block;
-	uint32_t node;
-	uint32_t node_block;
-	uint32_t copy_node;
-	uint32_t copy_node_block;
+	char node[NODE_NAME_LENGTH];
+	int32_t node_block;
+	char copy_node[NODE_NAME_LENGTH];
+	int32_t copy_node_block;
 	uint32_t size;
 } t_fs_file_block_metadata;
 

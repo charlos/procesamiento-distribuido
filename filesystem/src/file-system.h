@@ -38,7 +38,7 @@ typedef struct {
 typedef struct {
 	char* name;
 	Function funcion;
-	char** argumentos;
-}t_command;
+	char ** argumentos;
+} t_command;
 
 #endif /* FILE_SYSTEM_H_ */
