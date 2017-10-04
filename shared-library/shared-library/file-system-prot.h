@@ -1,6 +1,6 @@
-#include <commons/log.h>
 #include <commons/collections/list.h>
 #include <commons/collections/node.h>
+#include <commons/log.h>
 #include <stdint.h>
 
 #ifndef FILE_SYSTEM_PROTOCOL_H_
