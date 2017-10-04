@@ -1,4 +1,3 @@
-
 #include <commons/log.h>
 #include <stdint.h>
 

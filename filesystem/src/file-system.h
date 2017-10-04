@@ -8,7 +8,7 @@
 
 #define DIR_NAME_LENGTH 	255
 
-typedef int (* Funcion)(int);
+typedef void (* Function)(int);
 typedef char **CPPFunction ();
 
 typedef struct {
@@ -37,7 +37,7 @@ typedef struct {
 
 typedef struct {
 	char* name;
-	Funcion funcion;
+	Function funcion;
 	char** argumentos;
 }t_command;
 

@@ -1,10 +1,10 @@
-#include "data-node-prot.h"
-#include "socket.h"
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <stdarg.h>
+#include "data-node-prot.h"
+#include "socket.h"
 
 static void check(int test, const char * message, ...) {
 	if (test) {
