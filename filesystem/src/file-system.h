@@ -8,6 +8,9 @@
 
 #define DIR_NAME_LENGTH 	255
 
+typedef int (* Funcion)(int);
+typedef char **CPPFunction ();
+
 typedef struct {
 	uint32_t port;
 	char * mount_point;
@@ -31,5 +34,11 @@ typedef struct {
 	int block;
 	int bytes;
 } t_fs_required_block;
+
+typedef struct {
+	char* name;
+	Funcion funcion;
+	char** argumentos;
+}t_command;
 
 #endif /* FILE_SYSTEM_H_ */

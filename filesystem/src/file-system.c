@@ -17,6 +17,9 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include "file-system.h"
 
 #define	SOCKET_BACKLOG 			100
@@ -74,6 +77,17 @@ void cpfrom(char *, char *, char);
 int get_dir_index(char *, int);
 int get_dir_index_from_table(char *, int, int);
 int cpy_to_local_dir(char *, char *, char *);
+char ** fileman_completion(char* line, int start, int end);
+int execute_line(char * line);
+t_command * find_command(char * line);
+int cpfrom_wrapper(char ** args);
+int cpto_wrapper(char ** args);
+
+t_command comandos[] = {
+		{"cpfrom", cpfrom_wrapper},
+		{"cpto", cpto_wrapper},
+		{ (char *)NULL, (Funcion *)NULL}
+};
 
 int main(int argc, char * argv[]) {
 	bool clean_fs = true; // TODO: add clean flag
@@ -664,9 +678,11 @@ void fs_console(void * unused) { // TODO
 	char * param03 = NULL;
 	size_t len = 0;
 	ssize_t read;
-	while ((read = getline(&input, &len, stdin)) != -1) {
-		if (read > 0) {
-			input[read-1] = '\0';
+	rl_attempted_completion_function = (CPPFunction *)fileman_completion;
+
+//	while ((read = getline(&input, &len, stdin)) != -1) {
+//		if (read > 0) {
+//			input[read-1] = '\0';
 //			char * token = strtok(input, " ");
 //			if (token != NULL) command = token;
 //			token = strtok(NULL, " ");
@@ -676,10 +692,15 @@ void fs_console(void * unused) { // TODO
 //			token = strtok(NULL, " ");
 //			if (token != NULL) param03 = token;
 
-			cpfrom("/home/utnso/MOCK_DATA.csv", "/", TEXT);
-			cpto("/MOCK_DATA.csv", "/home/utnso/cpto");
-
-		}
+//			cpfrom("/home/utnso/MOCK_DATA.csv", "/", TEXT);
+//			cpto("/MOCK_DATA.csv", "/home/utnso/cpto");
+//
+//		}
+	while(1){
+		char* line = readline("Ingrese comando:\n>");
+		if((strcmp(line, "exit") == 0) || (!line))break;
+		int a = execute_line(line);
+		if (line) add_history(line);
 	}
 }
 
@@ -1357,3 +1378,87 @@ void free_node_block(char * node_name, int block) {
 		index++;
 	}
 }
+
+int execute_line(char* line){
+
+	char* line_aux = string_duplicate(line);
+	int i=0;
+	while(line_aux[i] != ' ')i++;
+	char* word = malloc(sizeof(char)*i);
+	strncpy(word, line_aux, i);
+	word[i] = '\0';
+
+	t_command *command = find_command (word);
+
+	i++;
+	char **args = string_split(line_aux + i, " ");
+	if (!command){
+		fprintf (stderr, "%s: No such command for YAMA FileSystem Console.\n", word);
+		return (-1);
+	}
+	free(word);
+	free(line_aux);
+	/* Call the function. */
+	return (*(command->funcion)) (args);
+}
+
+t_command *find_command(char* line){
+	register int i;
+
+	  for (i = 0; comandos[i].name; i++)
+	    if (strcmp (line, comandos[i].name) == 0)
+	      return (&comandos[i]);
+
+	  return ((t_command *)NULL);
+}
+
+char* command_generator(char* line, int state) {
+	static int list_index, len;
+	  char *name;
+
+	  /* If this is a new word to complete, initialize now.  This includes
+	     saving the length of TEXT for efficiency, and initializing the index
+	     variable to 0. */
+	  if (!state)
+	    {
+	      list_index = 0;
+	      len = strlen (line);
+	    }
+
+	  /* Return the next name which partially matches from the command list. */
+	  while (name = comandos[list_index].name)
+	    {
+	      list_index++;
+
+	      if (strncmp (name, line, len) == 0)
+	        return (string_duplicate(name));
+	    }
+
+	  /* If no names matched, then return NULL. */
+	  return ((char *)NULL);
+}
+
+char ** fileman_completion(char* line, int start, int end){
+	  char **matches;
+
+	  matches = (char **)NULL;
+
+	  /* If this word is at the start of the line, then it is a command
+	     to complete.  Otherwise it is the name of a file in the current
+	     directory. */
+	  if (start == 0)
+		matches = completion_matches(line, command_generator);
+
+	  return (matches);
+}
+
+int cpfrom_wrapper(char** args){
+	cpfrom(args[0], args[1], *args[2]);
+	return 1;
+}
+
+int cpto_wrapper(char** args){
+	cpto(args[0], args[1]);
+	return 1;
+}
+
