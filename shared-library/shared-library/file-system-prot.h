@@ -24,6 +24,7 @@
 #define	ENOTDIR						    -206 // not a directory
 #define	EEXIST						    -207 // file exists
 #define	CORRUPTED_FILE					-208 // corrupted file
+#define	DISCONNECTED_NODE 				-209 // disconnected node 
 
 /**
  * @NAME fs_recv_operation_code
