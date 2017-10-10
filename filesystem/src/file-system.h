@@ -41,4 +41,9 @@ typedef struct {
 	char ** argumentos;
 } t_command;
 
+typedef struct {
+	int blocks;
+	char * node;
+} t_fs_to_release;
+
 #endif /* FILE_SYSTEM_H_ */

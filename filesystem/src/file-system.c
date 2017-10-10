@@ -86,6 +86,12 @@ char * assign_node(char *);
 bool in_ignore_list(int, t_list *);
 bool dir_exists(int, char *);
 
+void rm_file(char *);
+void add_to_release_list(t_list *, char *);
+void free_node_block(char *, int);
+int get_released_size(t_list *, char *);
+void closure_trs(t_fs_to_release *);
+
 int main(int argc, char * argv[]) {
 	bool clean_fs = true; // TODO: add clean flag
 
@@ -510,7 +516,8 @@ void check_fs_status(void) {
 	bool connected_node;
 	char * dir_path;
 	char * md_file_path;
-	char * key;
+	char * key_cpy0;
+	char * key_cpy1;
 	char ** data;
 	int block;
 
@@ -533,17 +540,19 @@ void check_fs_status(void) {
 					md_file_path = string_from_format("%s/%s", dir_path, (ent->d_name));
 					md_file = config_create(md_file_path);
 					block = 0;
-					key = string_from_format("BLOQUE%dCOPIA0", block);
-					while (config_has_property(md_file, key)) {
-						data = config_get_array_value(md_file, key);
-						connected_node = (get_datanode_fd(data[0]) != DISCONNECTED_NODE);
-						free(data[0]);
-						free(data[1]);
-						free(data);
-						if (!connected_node) {
-							free(key);
-							key = string_from_format("BLOQUE%dCOPIA1", block);
-							data = config_get_array_value(md_file, key);
+					key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+					key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
+					while (config_has_property(md_file, key_cpy0) || config_has_property(md_file, key_cpy1)) {
+						connected_node = false;
+						if (config_has_property(md_file, key_cpy0)) {
+							data = config_get_array_value(md_file, key_cpy0);
+							connected_node = (get_datanode_fd(data[0]) != DISCONNECTED_NODE);
+							free(data[0]);
+							free(data[1]);
+							free(data);
+						}
+						if (!connected_node && config_has_property(md_file, key_cpy1)) {
+							data = config_get_array_value(md_file, key_cpy1);
 							connected_node = (get_datanode_fd(data[0]) != DISCONNECTED_NODE);
 							free(data[0]);
 							free(data[1]);
@@ -554,10 +563,13 @@ void check_fs_status(void) {
 							break;
 						}
 						block++;
-						free(key);
-						key = string_from_format("BLOQUE%dCOPIA0", block);
+						free(key_cpy1);
+						free(key_cpy0);
+						key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+						key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 					}
-					free(key);
+					free(key_cpy1);
+					free(key_cpy0);
 					config_destroy(md_file);
 					free(md_file_path);
 				}
@@ -628,7 +640,8 @@ void read_file(int * client_socket) {
 	int file_size = config_get_int_value(md_file, "TAMANIO");
 	void * buffer = malloc(file_size);
 
-	char * key;
+	char * key_cpy0;
+	char * key_cpy1;
 	char * bytes_key;
 	char ** values;
 	int datanode_fd;
@@ -638,25 +651,25 @@ void read_file(int * client_socket) {
 	pthread_mutex_lock(&nodes_table_m_lock);
 	int readed_bytes = 0;
 	int block = 0;
-	key = string_from_format("BLOQUE%dCOPIA0", block);
+	key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+	key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 	bytes_key = string_from_format("BLOQUE%dBYTES", block);
-	while (config_has_property(md_file, key) && readed_bytes < file_size) {
-		values = config_get_array_value(md_file, key);
-		datanode_fd = get_datanode_fd(values[0]);
-		if (datanode_fd == DISCONNECTED_NODE) {
+
+	while ((config_has_property(md_file, key_cpy0) || config_has_property(md_file, key_cpy1)) && readed_bytes < file_size) {
+
+		if (config_has_property(md_file, key_cpy0)) {
+			values = config_get_array_value(md_file, key_cpy0);
+			datanode_fd = get_datanode_fd(values[0]);
+		}
+		if (config_has_property(md_file, key_cpy0) && datanode_fd == DISCONNECTED_NODE) {
 			free(values[0]);
 			free(values[1]);
 			free(values);
-			free(key);
-			key = string_from_format("BLOQUE%dCOPIA1", block);
-			values = config_get_array_value(md_file, key);
+			values = config_get_array_value(md_file, key_cpy1);
 			datanode_fd = get_datanode_fd(values[0]);
-			if (datanode_fd == DISCONNECTED_NODE) {
-				free(values[0]);
-				free(values[1]);
-				free(values);
-				break;
-			}
+		} else if (!config_has_property(md_file, key_cpy0)) {
+			values = config_get_array_value(md_file, key_cpy1);
+			datanode_fd = get_datanode_fd(values[0]);
 		}
 
 		bytes = config_get_int_value(md_file, bytes_key);
@@ -669,15 +682,18 @@ void read_file(int * client_socket) {
 		free(values[0]);
 		free(values[1]);
 		free(values);
-		block++;
 
 		free(bytes_key);
-		free(key);
-		key = string_from_format("BLOQUE%dCOPIA0", block);
+		free(key_cpy1);
+		free(key_cpy0);
+		block++;
+		key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+		key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
 	}
 	free(bytes_key);
-	free(key);
+	free(key_cpy1);
+	free(key_cpy0);
 	pthread_mutex_unlock(&nodes_table_m_lock);
 	config_destroy(md_file);
 	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
@@ -742,41 +758,63 @@ void get_metadata_file(int * client_socket) {
 
 	t_fs_file_block_metadata * block_md;
 	int block = 0;
-	char * key = string_from_format("BLOQUE%dCOPIA0", block);
+	char * key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+	char * key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 	char * bytes_key = string_from_format("BLOQUE%dBYTES", block);
 	char ** values;
 
-	while (config_has_property(md_file_cfg, key)) { // TODO: check if condition
+	pthread_mutex_lock(&nodes_table_m_lock);
+	while (config_has_property(md_file_cfg, key_cpy0) || config_has_property(md_file_cfg, key_cpy1)) {
 		block_md = (t_fs_file_block_metadata *) malloc(sizeof(t_fs_file_block_metadata));
 		block_md->file_block = block;
-		values = config_get_array_value(md_file_cfg, key);
-		strcpy(&(block_md->node), values[0]);
-		block_md->node_block = atoi(values[1]);
-		free(values[0]);
-		free(values[1]);
-		free(values);
-		free(key);
-		key = string_from_format("BLOQUE%dCOPIA1", block);
-		values = config_get_array_value(md_file_cfg, key);
-		strcpy(&(block_md->copy_node), values[0]);
-		block_md->copy_node_block = atoi(values[1]);
-		free(values[0]);
-		free(values[1]);
-		free(values);
+
+		if (config_has_property(md_file_cfg, key_cpy0)) {
+			values = config_get_array_value(md_file_cfg, key_cpy0);
+			if (get_datanode_fd(values[0]) != DISCONNECTED_NODE) {
+				strcpy(&(block_md->node), values[0]);
+				block_md->node_block = atoi(values[1]);
+			} else {
+				strcpy(&(block_md->node),"\0");
+				block_md->node_block = -1;
+			}
+			free(values[0]);
+			free(values[1]);
+			free(values);
+		}
+
+		if (config_has_property(md_file_cfg, key_cpy0)) {
+			values = config_get_array_value(md_file_cfg, key_cpy1);
+			if (get_datanode_fd(values[0]) != DISCONNECTED_NODE) {
+				strcpy(&(block_md->copy_node), values[0]);
+				block_md->copy_node_block = atoi(values[1]);
+			} else {
+				strcpy(&(block_md->copy_node),"\0");
+				block_md->copy_node_block = -1;
+			}
+			free(values[0]);
+			free(values[1]);
+			free(values);
+		}
+
 		block_md->size = config_get_int_value(md_file_cfg, bytes_key);
 		list_add((md_file->block_list), block_md);
 
-		free(key);
 		free(bytes_key);
+		free(key_cpy1);
+		free(key_cpy0);
 		block++;
-		key = string_from_format("BLOQUE%dCOPIA0", block);
+		key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+		key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
 	}
-	free(key);
+	pthread_mutex_unlock(&nodes_table_m_lock);
+
 	free(bytes_key);
+	free(key_cpy1);
+	free(key_cpy0);
 
 	fs_get_metadata_file_send_resp(client_socket, SUCCESS, md_file);
-	list_destroy_and_destroy_elements(md_file->block_list, &closure);
+	list_destroy_and_destroy_elements(md_file->block_list, &closure); // TODO: check closure function (t_fs_file_block_metadata struct)
 	free(md_file);
 
 	config_destroy(md_file_cfg);
@@ -1288,7 +1326,8 @@ int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) 
 	char * local_file_path = string_from_format("%s/%s", local_dir, yamafs_file);
 	FILE * fs_file = fopen(local_file_path, "wb");
 
-	char * key;
+	char * key_cpy0;
+	char * key_cpy1;
 	char * bytes_key;
 	char ** values;
 	int datanode_fd;
@@ -1298,25 +1337,25 @@ int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) 
 	pthread_mutex_lock(&nodes_table_m_lock);
 	int readed_bytes = 0;
 	int block = 0;
-	key = string_from_format("BLOQUE%dCOPIA0", block);
+	key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+	key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 	bytes_key = string_from_format("BLOQUE%dBYTES", block);
-	while (config_has_property(md_file, key) && readed_bytes < file_size) {
-		values = config_get_array_value(md_file, key);
-		datanode_fd = get_datanode_fd(values[0]);
-		if (datanode_fd == DISCONNECTED_NODE) {
+
+	while ((config_has_property(md_file, key_cpy0) || config_has_property(md_file, key_cpy1)) && readed_bytes < file_size) {
+
+		if (config_has_property(md_file, key_cpy0)) {
+			values = config_get_array_value(md_file, key_cpy0);
+			datanode_fd = get_datanode_fd(values[0]);
+		}
+		if (config_has_property(md_file, key_cpy0) && datanode_fd == DISCONNECTED_NODE) {
 			free(values[0]);
 			free(values[1]);
 			free(values);
-			free(key);
-			key = string_from_format("BLOQUE%dCOPIA1", block);
-			values = config_get_array_value(md_file, key);
+			values = config_get_array_value(md_file, key_cpy1);
 			datanode_fd = get_datanode_fd(values[0]);
-			if (datanode_fd == DISCONNECTED_NODE) {
-				free(values[0]);
-				free(values[1]);
-				free(values);
-				break;
-			}
+		} else if (!config_has_property(md_file, key_cpy0)) {
+			values = config_get_array_value(md_file, key_cpy1);
+			datanode_fd = get_datanode_fd(values[0]);
 		}
 
 		bytes = config_get_int_value(md_file, bytes_key);
@@ -1328,15 +1367,18 @@ int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) 
 		free(values[0]);
 		free(values[1]);
 		free(values);
-		block++;
 
 		free(bytes_key);
-		free(key);
-		key = string_from_format("BLOQUE%dCOPIA0", block);
+		free(key_cpy1);
+		free(key_cpy0);
+		block++;
+		key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+		key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
 	}
 	free(bytes_key);
-	free(key);
+	free(key_cpy1);
+	free(key_cpy0);
 	pthread_mutex_unlock(&nodes_table_m_lock);
 
 	fclose(fs_file);
@@ -1763,6 +1805,7 @@ void format() {
 			bitarray_clean_bit((connected_node->bitmap), pos);
 			pos++;
 		}
+		index++;
 	}
 	pthread_mutex_unlock(&nodes_table_m_lock);
 
@@ -1793,6 +1836,206 @@ void format() {
 
 
 
+//	╔══════════════════════════════════════════════════════════════╗
+//	║ COMMAND: RM FILE                                             ║
+//	╚══════════════════════════════════════════════════════════════╝
+
+/**
+ * @NAME rm_file
+ */
+void rm_file(char * file_path) {
+
+	char * dir_c = string_duplicate(file_path);
+	char * base_c = string_duplicate(file_path);
+	char * yamafs_dir = dirname(dir_c);
+	char * yamafs_file = basename(base_c);
+
+	int dir_index = get_dir_index(yamafs_dir, LOCK_WRITE, NULL);
+	if (dir_index == ENOTDIR) {
+		free(base_c);
+		free(dir_c);
+		printf("error: file directory doesn't exist.\nplease try again...\n");
+		return;
+	}
+
+	struct stat sb;
+	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, yamafs_file);
+	if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+		free(md_file_path);
+		free(base_c);
+		free(dir_c);
+		printf("error: file doesn't exist.\nplease try again...\n");
+		return;
+	}
+	free(base_c);
+	free(dir_c);
+
+	t_config * md_file_cfg = config_create(md_file_path);
+
+	int block = 0;
+	char * key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+	char * key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
+	char ** values;
+	t_list * release_list = list_create();
+
+	pthread_mutex_lock(&nodes_table_m_lock);
+	//
+	// bitmap node update
+	//
+	while (config_has_property(md_file_cfg, key_cpy0) || config_has_property(md_file_cfg, key_cpy1)) {
+		if (config_has_property(md_file_cfg, key_cpy0)) {
+			values = config_get_array_value(md_file_cfg, key_cpy0);
+			add_to_release_list(release_list, values[0]);
+			free_node_block(values[0], atoi(values[1]));
+			free(values[0]);
+			free(values[1]);
+			free(values);
+		}
+		if (config_has_property(md_file_cfg, key_cpy1)) {
+			values = config_get_array_value(md_file_cfg, key_cpy1);
+			add_to_release_list(release_list, values[0]);
+			free_node_block(values[0], atoi(values[1]));
+			free(values[0]);
+			free(values[1]);
+			free(values);
+		}
+		free(key_cpy1);
+		free(key_cpy0);
+		block++;
+		key_cpy0 = string_from_format("BLOQUE%dCOPIA0", block);
+		key_cpy1 = string_from_format("BLOQUE%dCOPIA1", block);
+	}
+	free(key_cpy1);
+	free(key_cpy0);
+	config_destroy(md_file_cfg);
+	remove(md_file_path);
+	free(md_file_path);
+	//
+	// node table update
+	//
+	char * data_bin_path = string_from_format("%s/metadata/nodos.bin", (fs_conf->mount_point));
+	char * temp_data_bin_path = string_from_format("%s/metadata/temp.bin", (fs_conf->mount_point));
+	FILE * temp = fopen(temp_data_bin_path, "w");
+
+	char ** nodes = config_get_array_value(nodes_table, "NODOS");
+	char * node_list_str = string_new();
+	string_append_with_format(&node_list_str, "[%s", nodes[0]);
+	int index = 1;
+	while (nodes[index] != NULL) {
+		string_append_with_format(&node_list_str, ",%s", nodes[index]);
+		index++;
+	}
+	string_append(&node_list_str, "]");
+	fprintf(temp,"NODOS=%s\n", node_list_str);
+	free(node_list_str);
+
+	int fs_free_size = config_get_int_value(nodes_table, "LIBRE");
+	int node_free_size;
+	char * key;
+	index = 0;
+	while (nodes[index] != NULL) {
+		key = string_from_format("%sTotal", nodes[index]);
+		fprintf(temp,"%s=%d\n", key, (config_get_int_value(nodes_table, key)));
+		free(key);
+		key = string_from_format("%sLibre", nodes[index]);
+		node_free_size = config_get_int_value(nodes_table, key) + get_released_size(release_list, nodes[index]);
+		fs_free_size += node_free_size;
+		fprintf(temp,"%s=%d\n", key, node_free_size);
+		free(key);
+		index++;
+	}
+
+	fprintf(temp,"TAMANIO=%d\n", config_get_int_value(nodes_table, "TAMANIO"));
+	fprintf(temp,"LIBRE=%d", fs_free_size);
+	fclose(temp);
+
+	config_destroy(nodes_table);
+	remove(data_bin_path);
+	rename(temp_data_bin_path, data_bin_path);
+	nodes_table = config_create(data_bin_path);
+	pthread_mutex_unlock(&nodes_table_m_lock);
+
+	list_destroy_and_destroy_elements(release_list, &closure_trs);
+	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+	index = 0;
+	while (nodes[index] != NULL) {
+		free(nodes[index]);
+		index++;
+	}
+	free(nodes);
+	free(temp_data_bin_path);
+	free(data_bin_path);
+}
+
+/**
+ * @NAME add_to_release_list
+ */
+void add_to_release_list(t_list * release_list, char * node) {
+	t_fs_node * connected_node;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		connected_node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node, (connected_node->node_name)) == 0) {
+			t_fs_to_release * to_release;
+			index = 0;
+			while (index < (release_list->elements_count)) {
+				to_release = (t_fs_to_release *) list_get(release_list, index);
+				if (strcmp(node, (to_release->node)) == 0) {
+					(to_release->blocks)++;
+					return;
+				}
+				index++;
+			}
+			to_release = malloc(sizeof(t_fs_to_release));
+			to_release->node = string_duplicate(node);
+			to_release->blocks = 1;
+			list_add(release_list, to_release);
+			return;
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME free_node_block
+ */
+void free_node_block(char * node, int block) {
+	t_fs_node * connected_node;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		connected_node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node, (connected_node->node_name)) == 0) {
+			bitarray_clean_bit((connected_node->bitmap), block);
+			return;
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME get_released_size
+ */
+int get_released_size(t_list * release_list, char * node) {
+	t_fs_to_release * to_release;
+	int index = 0;
+	while (index < (release_list->elements_count)) {
+		to_release = (t_fs_to_release *) list_get(release_list, index);
+		if (strcmp(node, (to_release->node)) == 0) {
+			return (to_release->blocks);
+		}
+		index++;
+	}
+	return 0;
+}
+
+/**
+ * @NAME closure_trs
+ */
+void closure_trs(t_fs_to_release * to_r) {
+	free(to_r->node);
+	free(to_r);
+}
 
 
 
