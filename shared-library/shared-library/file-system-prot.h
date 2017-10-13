@@ -24,7 +24,7 @@
 #define	ENOTDIR						    -206 // not a directory
 #define	EEXIST						    -207 // file exists
 #define	CORRUPTED_FILE					-208 // corrupted file
-#define	DISCONNECTED_NODE 				-209 // disconnected node 
+#define	DISCONNECTED_NODE 				-209 // disconnected node
 
 /**
  * @NAME fs_recv_operation_code
@@ -123,12 +123,14 @@ t_fs_read_file_req * fs_read_file_recv_req(int *, t_log *);
 void fs_read_file_send_resp(int *, int, int, void *);
 
 typedef struct {
-	uint32_t file_block;
 	char node[NODE_NAME_LENGTH];
 	int32_t node_block;
-	char copy_node[NODE_NAME_LENGTH];
-	int32_t copy_node_block;
+} t_fs_block_copy;
+
+typedef struct {
+	uint32_t file_block;
 	uint32_t size;
+	t_list * copies_list;
 } t_fs_file_block_metadata;
 
 typedef struct {
