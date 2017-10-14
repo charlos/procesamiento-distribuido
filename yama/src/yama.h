@@ -12,5 +12,7 @@
 #include <stdlib.h>
 #include <shared-library/socket.h>
 #include <shared-library/file-system-prot.h>
+#include "helper.h"
+
 
 #endif /* YAMA_H_ */
