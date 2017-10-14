@@ -491,7 +491,7 @@ int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, int blo
 	node->node_name = string_duplicate(node_name);
 	node->bitmap = bitmap;
 	node->size = blocks;
-	node->fd = *node_fd;
+	node->fd = * node_fd;
 	list_add(nodes_list, node);
 	free(bitmap_file_path);
 	return SUCCESS;
@@ -834,6 +834,7 @@ void closure(void * node) {
  * @NAME cpfrom
  */
 void cpfrom(char * file_path, char * yamafs_dir, char type) {
+
 	struct stat sb;
 	if ((stat(file_path, &sb) < 0) || (stat(file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
 		printf("error: file doesn't exist.\nplease try again...\n");
@@ -858,13 +859,16 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	case ENOTDIR:
 		printf("error: yamafs dir not exists.\nplease try again...\n");
 		break;
+	case UNSUPPORTED_FILE_TYPE:
+		printf("error: unsupported file type.\nplease try again...\n");
+		break;
 	case EEXIST:
 		printf("error: file already exists in yamafs.\nplease try again...\n");
 		break;
 	default:;
 	}
 
-	unmap_file(req->buffer, req->file_size);
+	unmap_file((req->buffer), (req->file_size));
 	free(req->path);
 	free(req);
 	free(file_path_c);
@@ -874,6 +878,10 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
  * @NAME uploading_file
  */
 int uploading_file(t_fs_upload_file_req * req) {
+
+	if (((req->type) != BINARY) && ((req->type) != TEXT)) {
+		return UNSUPPORTED_FILE_TYPE;
+	}
 
 	char * dir_c = string_duplicate(req->path);
 	char * base_c = string_duplicate(req->path);
@@ -886,6 +894,7 @@ int uploading_file(t_fs_upload_file_req * req) {
 		free(dir_c);
 		return ENOTDIR;
 	}
+
 	struct stat sb;
 	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, file);
 	if ((stat(md_file_path, &sb) == 0) && (S_ISREG(sb.st_mode))) {
@@ -1168,9 +1177,9 @@ int assign_node_block(char * node_name) {
 			bool its_busy;
 			int pos = 0;
 			while (pos < (node->size)) {
-				its_busy = bitarray_test_bit(node->bitmap, pos);
+				its_busy = bitarray_test_bit((node->bitmap), pos);
 				if (!its_busy) {
-					bitarray_set_bit(node->bitmap, pos);
+					bitarray_set_bit((node->bitmap), pos);
 					block = pos;
 					break;
 				}
@@ -1191,7 +1200,7 @@ void write_file(void * file, t_config * md_file, int file_size, t_list * require
 	t_fs_required_block * required_block;
 	int writed_bytes = 0;
 	int index = 0;
-	while ((writed_bytes < file_size) && (index < (required_blocks->elements_count))) {
+	while ((writed_bytes < file_size) && (index < (required_blocks->elements_count))) {  // TODO: check condition
 		required_block = (t_fs_required_block *) list_get(required_blocks, index);
 		memset(block, 0, BLOCK_SIZE);
 		memcpy(block, file + writed_bytes, (required_block->bytes));
@@ -1250,6 +1259,7 @@ int get_datanode_fd(char * node_name) {
  * @NAME cpto
  */
 void cpto(char * yamafs_file_path, char * local_dir) {
+
 	struct stat sb;
 	if ((stat(local_dir, &sb) < 0) || (stat(local_dir, &sb) == 0 && !(S_ISDIR(sb.st_mode)))) {
 		printf("error: local directory doesn't exist.\nplease try again...\n");
@@ -1348,6 +1358,7 @@ int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) 
 		free(bytes_key);
 		block++;
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
+
 	}
 	free(bytes_key);
 	pthread_mutex_unlock(&nodes_table_m_lock);
@@ -1466,7 +1477,8 @@ int rename_file(int dir_index, char * yamafs_file, char * new_file_name) {
  * @NAME rename_dir
  */
 int rename_dir(int dir_index, char * new_dir_name) {
-	t_fs_directory * dir = (t_fs_directory *) (directories_mf_ptr + (sizeof(t_fs_directory) * dir_index));
+	t_fs_directory * dir = (t_fs_directory *) directories_mf_ptr;
+	dir += dir_index;
 	rw_lock_unlock(directories_locks, LOCK_WRITE, (dir->parent_dir));
 	if (dir_exists(dir_index, (dir->parent_dir), new_dir_name)) {
 		rw_lock_unlock(directories_locks, UNLOCK, (dir->parent_dir));
@@ -1492,8 +1504,8 @@ bool dir_exists(int dir_index, int parent_dir_index, char * dir_name) {
 		}
 		rw_lock_unlock(directories_locks, LOCK_READ, index);
 		dir_exists = ((fs_dir->parent_dir) >= 0)
-						&& ((fs_dir->parent_dir) == parent_dir_index)
-							&& (strcmp((char *)(fs_dir->name), dir_name) == 0);
+							&& ((fs_dir->parent_dir) == parent_dir_index)
+								&& (strcmp((char *)(fs_dir->name), dir_name) == 0);
 		rw_lock_unlock(directories_locks, UNLOCK, index);
 		index++;
 		fs_dir++;
@@ -1512,7 +1524,9 @@ bool dir_exists(int dir_index, int parent_dir_index, char * dir_name) {
  * @NAME fs_make_dir
  */
 void fs_make_dir(char * path_dir) {
+
 	int dir_index = get_dir_index(path_dir, LOCK_READ, NULL);
+
 	if (dir_index == ENOTDIR) {
 
 		char * dir_c = string_duplicate(path_dir);
@@ -1667,7 +1681,9 @@ void move(char * path, char * dest_dir_path) {
 		free(dir_c);
 	} else {
 		// is a directory
-		t_fs_directory * dir = (t_fs_directory *) (directories_mf_ptr + (sizeof(t_fs_directory) * dir_index));
+		t_fs_directory * dir = (t_fs_directory *) directories_mf_ptr;
+		dir += dir_index;
+
 		if (!dir_exists(dir_index, dest_dir_index, (dir->name))) {
 			dir->parent_dir = dest_dir_index;
 			printf("the directory was moved successfully!\n");
@@ -1690,7 +1706,7 @@ void move(char * path, char * dest_dir_path) {
 /**
  * @NAME ls
  */
-void ls (char * dir_path) {
+void ls(char * dir_path) {
 	int dir_index = get_dir_index(dir_path, LOCK_READ, NULL);
 	if (dir_index == ENOTDIR) {
 		printf("error: directory not exists.\nplease try again...\n");
@@ -1701,9 +1717,8 @@ void ls (char * dir_path) {
 	struct dirent * ent;
 	DIR * yamafs_dir = opendir(yamafs_dir_path);
 	while ((ent = readdir(yamafs_dir)) != NULL) {
-		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0)) {
+		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0) && ((ent->d_type) == DT_DIR))
 			printf("-> %s (regular file)\n", (ent->d_name));
-		}
 	}
 	closedir(yamafs_dir);
 	free(yamafs_dir_path);
@@ -1740,6 +1755,7 @@ void ls (char * dir_path) {
 void format() {
 
 	pthread_mutex_lock(&nodes_table_m_lock);
+
 	t_list * nodes_table_list = list_create();
 	char ** nodes = config_get_array_value(nodes_table, "NODOS");
 	int pos = 0;
@@ -1803,6 +1819,7 @@ void format() {
 		}
 		index++;
 	}
+
 	pthread_mutex_unlock(&nodes_table_m_lock);
 
 	rw_lock_unlock(directories_locks, LOCK_WRITE, ROOT);
@@ -2470,6 +2487,102 @@ void info(char * file_path) {
 	}
 	free(bytes_key);
 
+	config_destroy(md_file);
+	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+	free(base_c);
+	free(dir_c);
+}
+
+
+
+
+//	╔══════════════════════════════════════════════════════════════╗
+//	║ COMMAND: CAT                                                 ║
+//	╚══════════════════════════════════════════════════════════════╝
+
+/**
+ * @NAME cat
+ */
+void cat(char * file_path) {
+
+	char * dir_c = string_duplicate(file_path);
+	char * base_c = string_duplicate(file_path);
+	char * yamafs_dir = dirname(dir_c);
+	char * yamafs_file = basename(base_c);
+
+	int dir_index = get_dir_index(yamafs_dir, LOCK_READ, NULL);
+	if (dir_index == ENOTDIR) {
+		free(base_c);
+		free(dir_c);
+		printf("error: file doesn't exist.\nplease try again...\n");
+		return;
+	}
+
+	struct stat sb;
+	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, yamafs_file);
+	if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+		free(md_file_path);
+		free(base_c);
+		free(dir_c);
+		printf("error: file doesn't exist.\nplease try again...\n");
+		return;
+	}
+
+	t_config * md_file = config_create(md_file_path);
+	free(md_file_path);
+
+
+	pthread_mutex_lock(&nodes_table_m_lock);
+
+	t_dn_get_block_resp * dn_block;
+
+	int bytes;
+	int block = 0;
+	int cpy;
+	int datanode_fd;
+	int keys_amount = config_keys_amount(md_file);
+	int node_block;
+	int i;
+
+	char * bytes_key = string_from_format("BLOQUE%dBYTES", block);
+	char * cpy_key;
+	char ** data;
+
+	while (config_has_property(md_file, bytes_key)) {
+		datanode_fd = DISCONNECTED_NODE;
+		cpy = 0;
+		while (datanode_fd == DISCONNECTED_NODE && cpy < keys_amount) {
+			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
+			if (config_has_property(md_file, cpy_key)) {
+				data = config_get_array_value(md_file, cpy_key);
+				datanode_fd = get_datanode_fd(data[0]);
+				node_block = atoi(data[1]);
+				free(data[0]);
+				free(data[1]);
+				free(data);
+			}
+			free(cpy_key);
+			cpy++;
+		}
+
+		bytes = config_get_int_value(md_file, bytes_key);
+		dn_block = dn_get_block(datanode_fd, node_block, logger);
+
+		for (i = 0; i < bytes; i++) {
+			// printf("%s", dn_block->buffer[i]); // TODO: print
+		}
+
+		free(dn_block->buffer);
+		free(dn_block);
+		free(bytes_key);
+		block++;
+		bytes_key = string_from_format("BLOQUE%dBYTES", block);
+	}
+	free(bytes_key);
+	pthread_mutex_unlock(&nodes_table_m_lock);
+
+	config_destroy(md_file);
 	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 	free(base_c);
 	free(dir_c);
@@ -2499,22 +2612,27 @@ void info(char * file_path) {
 char ** fileman_completion(char* line, int start, int end);
 int execute_line(char * line);
 t_command * find_command(char * line);
+void format_wrapper(char ** args);
+void rm_wrapper(char ** args);
+void rename_wrapper(char ** args);
+void mv_wrapper(char ** args);
+void cat_wrapper(char ** args);
+void mkdir_wrapper(char ** args);
 void cpfrom_wrapper(char ** args);
 void cpto_wrapper(char ** args);
-void rename_wrapper(char **args);
-void mkdir_wrapper(char **args);
-void mv_wrapper(char **args);
 void cpblock_wrapper(char **args);
-void ls_wrapper(char **args);
-void info_wrapper(char **args);
-
+void ls_wrapper(char ** args);
+void info_wrapper(char ** args);
 
 t_command comandos[] = {
-		{"cpfrom", cpfrom_wrapper},
-		{"cpto", cpto_wrapper},
+		{"format", format_wrapper},
+		{"rm", rm_wrapper},
 		{"rename", rename_wrapper},
 		{"mv", mv_wrapper},
+		{"cat", cat_wrapper},
 		{"mkdir", mkdir_wrapper},
+		{"cpfrom", cpfrom_wrapper},
+		{"cpto", cpto_wrapper},
 		{"cpblock", cpblock_wrapper},
 		{"ls", ls_wrapper},
 		{"info", info_wrapper},
@@ -2530,12 +2648,13 @@ void fs_console(void * unused) { // TODO
 
 	while(1){
 		char* line = readline("Ingrese comando:\n>");
+		//TODO Ver como solucionar lo del EoF
 		if(strcmp(line, "exit") == 0){
 			free(line);
 			break;
 		}
-		cpfrom("/home/utnso/MOCK_DATA.csv", "/", TEXT);
-				cpto("/MOCK_DATA.csv", "/home/utnso/cpto");
+		int a = execute_line(line);
+		if (line) add_history(line);
 		free(line);
 	}
 }
@@ -2614,29 +2733,56 @@ char ** fileman_completion(char* line, int start, int end){
 	return (matches);
 }
 
-void cpfrom_wrapper(char **args){
-	cpfrom(args[0], args[1], *args[2]);
+
+
+
+//
+// TODO: free params, params validation
+//
+void format_wrapper(char ** args) {
+	format();
 }
 
-void cpto_wrapper(char **args){
-	cpto(args[0], args[1]);
+void rm_wrapper(char ** args){
+	if (strcmp(args[0], "-d") == 0) {
+		rm_dir(args[1]);
+	} else if (strcmp(args[0], "-b") == 0) {
+		rm_file_block(args[1], atoi(args[2]), atoi(args[3]));
+	} else {
+		rm_file(args[0]);
+	}
 }
 
-void rename_wrapper(char **args){
+void rename_wrapper(char ** args) {
 	fs_rename(args[0], args[1]);
 }
 
-void mkdir_wrapper(char **args){
-	fs_make_dir(args[0]);
-}
-
-void mv_wrapper(char **args){
+void mv_wrapper(char ** args) {
 	move(args[0], args[1]);
 }
 
-void cpblock_wrapper(char **args){
-	int block_number = atoi(args[1]);
-	cpblock(args[0], block_number, args[2]);
+void cat_wrapper(char ** args) {
+	cat(args[0]);
+}
+
+void mkdir_wrapper(char ** args) {
+	fs_make_dir(args[0]);
+}
+
+void cpfrom_wrapper(char ** args) {
+	if ((*args[2] == 't') || (*args[2] == 'b')) {
+		cpfrom(args[0], args[1], *args[2]);
+	} else {
+		printf("errorBLABLA: unsupported file type.\nplease try again...\n");
+	}
+}
+
+void cpto_wrapper(char ** args) {
+	cpto(args[0], args[1]);
+}
+
+void cpblock_wrapper(char ** args) {
+	cpblock(args[0], atoi(args[1]), args[2]);
 }
 
 void ls_wrapper(char **args){
@@ -2646,26 +2792,6 @@ void ls_wrapper(char **args){
 void info_wrapper(char **args){
 	info(args[0]);
 }
-
-void rm_wrapper(char **args){
-	int arguments_number = 0;
-	while(args[arguments_number] != NULL)arguments_number++;
-
-	if(arguments_number == 1){
-		// Borrar archivo
-		rm_file(args[0]);
-	}else if(arguments_number == 2){
-		// Borrar directorio
-		rm_dir(args[1]);
-	}else {
-		// Borrar bloque
-		int block_number, copy_number;
-		block_number = atoi(args[1]);
-		copy_number = atoi(args[2]);
-		rm_file_block(args[0], block_number, copy_number);
-	}
-}
-
 
 
 
