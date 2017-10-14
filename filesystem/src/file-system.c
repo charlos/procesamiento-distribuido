@@ -2504,6 +2504,10 @@ void cpto_wrapper(char ** args);
 void rename_wrapper(char **args);
 void mkdir_wrapper(char **args);
 void mv_wrapper(char **args);
+void cpblock_wrapper(char **args);
+void ls_wrapper(char **args);
+void info_wrapper(char **args);
+
 
 t_command comandos[] = {
 		{"cpfrom", cpfrom_wrapper},
@@ -2511,6 +2515,9 @@ t_command comandos[] = {
 		{"rename", rename_wrapper},
 		{"mv", mv_wrapper},
 		{"mkdir", mkdir_wrapper},
+		{"cpblock", cpblock_wrapper},
+		{"ls", ls_wrapper},
+		{"info", info_wrapper},
 		{ (char *)NULL, (Function *)NULL}
 };
 
@@ -2627,8 +2634,37 @@ void mv_wrapper(char **args){
 	move(args[0], args[1]);
 }
 
+void cpblock_wrapper(char **args){
+	int block_number = atoi(args[1]);
+	cpblock(args[0], block_number, args[2]);
+}
 
+void ls_wrapper(char **args){
+	ls(args[0]);
+}
 
+void info_wrapper(char **args){
+	info(args[0]);
+}
+
+void rm_wrapper(char **args){
+	int arguments_number = 0;
+	while(args[arguments_number] != NULL)arguments_number++;
+
+	if(arguments_number == 1){
+		// Borrar archivo
+		rm_file(args[0]);
+	}else if(arguments_number == 2){
+		// Borrar directorio
+		rm_dir(args[1]);
+	}else {
+		// Borrar bloque
+		int block_number, copy_number;
+		block_number = atoi(args[1]);
+		copy_number = atoi(args[2]);
+		rm_file_block(args[0], block_number, copy_number);
+	}
+}
 
 
 
