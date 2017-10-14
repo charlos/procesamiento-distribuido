@@ -1,10 +1,10 @@
-#include "data-node-prot.h"
-#include "socket.h"
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <stdarg.h>
+#include "data-node-prot.h"
+#include "socket.h"
 
 static void check(int test, const char * message, ...) {
 	if (test) {
@@ -17,13 +17,13 @@ static void check(int test, const char * message, ...) {
 	}
 }
 
-void * map_file(char * file_path) {
+void * map_file(char * file_path, int flags) {
 	struct stat sb;
 	size_t size;
 	int fd; // file descriptor
 	int status;
 
-	fd = open(file_path, O_RDWR);
+	fd = open(file_path, flags);
 	check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
 
 	status = fstat(fd, &sb);
@@ -61,7 +61,7 @@ int dn_recv_operation_code(int * client_socket, t_log * logger) {
 	║ GET BLOCK ║
 	╚═══════════╝ **/
 
-int dn_get_block(int server_socket, int block, t_log * logger) {
+t_dn_get_block_resp * dn_get_block(int server_socket, int block, t_log * logger) {
 
 	/**	╔═════════════════════════╦═══════════════════════╗
 		║ operation_code (1 byte) ║ block number (4 byte) ║
@@ -104,7 +104,7 @@ int dn_get_block(int server_socket, int block, t_log * logger) {
 t_dn_get_block_req * dn_get_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_get_block_req * request = malloc(sizeof(t_dn_get_block_req));
 	uint8_t prot_block = 4;
-	int received_bytes = socket_recv(client_socket, (request->block), prot_block);
+	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
@@ -140,7 +140,7 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 	uint8_t prot_ope_code = 1;
 	uint8_t prot_block = 4;
 
-	uint8_t req_ope_code = GET_BLOCK;
+	uint8_t req_ope_code = SET_BLOCK;
 	uint32_t req_block = block;
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_block + BLOCK_SIZE);
@@ -164,12 +164,13 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 t_dn_set_block_req * dn_set_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_set_block_req * request = malloc(sizeof(t_dn_set_block_req));
 	uint8_t prot_block = 4;
-	int received_bytes = socket_recv(client_socket, (request->block), prot_block);
+	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
+	request->buffer = malloc(BLOCK_SIZE);
 	received_bytes = socket_recv(client_socket, (request->buffer), BLOCK_SIZE);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);

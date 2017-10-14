@@ -12,6 +12,7 @@
 #define REDUCE_LOCALLY_OC		2
 #define REDUCE_GLOBAL_OC		3
 #define STORAGE_OC				4
+#define REQUEST_TEMP_FILE		5
 
 #define	SUCCESS							1
 #define	ERROR							-200

@@ -1,11 +1,12 @@
-#include <commons/log.h>
 #include <commons/collections/list.h>
 #include <commons/collections/node.h>
+#include <commons/log.h>
 #include <stdint.h>
 
 #ifndef FILE_SYSTEM_PROTOCOL_H_
 #define FILE_SYSTEM_PROTOCOL_H_
 
+#define NODE_NAME_LENGTH 	10
 #define	FS_HANDSHAKE        1
 #define UPLOAD_FILE         2
 #define	READ_FILE           3
@@ -22,6 +23,9 @@
 #define ENOENT							-205 // no such file or directory
 #define	ENOTDIR						    -206 // not a directory
 #define	EEXIST						    -207 // file exists
+#define	CORRUPTED_FILE					-208 // corrupted file
+#define	DISCONNECTED_NODE 				-209 // disconnected node
+#define	UNSUPPORTED_FILE_TYPE     		-210 // unsupported file type
 
 /**
  * @NAME fs_recv_operation_code
@@ -120,12 +124,14 @@ t_fs_read_file_req * fs_read_file_recv_req(int *, t_log *);
 void fs_read_file_send_resp(int *, int, int, void *);
 
 typedef struct {
+	char node[NODE_NAME_LENGTH];
+	int32_t node_block;
+} t_fs_block_copy;
+
+typedef struct {
 	uint32_t file_block;
-	uint32_t node;
-	uint32_t node_block;
-	uint32_t copy_node;
-	uint32_t copy_node_block;
 	uint32_t size;
+	t_list * copies_list;
 } t_fs_file_block_metadata;
 
 typedef struct {
@@ -133,37 +139,37 @@ typedef struct {
 	uint32_t file_size;
 	char type;
 	t_list * block_list;
-} t_fs_file_metadata;
+} t_fs_metadata_file;
 
 typedef struct {
 	int16_t exec_code;
-	t_fs_file_metadata * file_metadata;
-} t_fs_get_file_md_resp;
+	t_fs_metadata_file * metadata_file;
+} t_fs_get_md_file_resp;
 
 typedef struct {
 	int16_t exec_code;
 	char * path;
-} t_fs_get_file_md_req;
+} t_fs_get_md_file_req;
 
 /**
- * @NAME fs_get_file_metadata
+ * @NAME fs_get_metadata_file
  * @DESC
  *
  */
-t_fs_get_file_md_resp * fs_get_file_metadata(int, char *, t_log *);
+t_fs_get_md_file_resp * fs_get_metadata_file(int, char *, t_log *);
 
 /**
- * @NAME fs_get_file_metadata_recv_req
+ * @NAME fs_get_metadata_file_recv_req
  * @DESC
  *
  */
-t_fs_get_file_md_req * fs_get_file_metadata_recv_req(int *, t_log *);
+t_fs_get_md_file_req * fs_get_metadata_file_recv_req(int *, t_log *);
 
 /**
- * @NAME fs_get_file_metadata_send_resp
+ * @NAME fs_get_metadata_file_send_resp
  * @DESC
  *
  */
-void fs_get_file_metadata_send_resp(int *, int, t_fs_file_metadata *);
+void fs_get_metadata_file_send_resp(int *, int, t_fs_metadata_file *);
 
 #endif /* FILE_SYSTEM_PROTOCOL_H_ */

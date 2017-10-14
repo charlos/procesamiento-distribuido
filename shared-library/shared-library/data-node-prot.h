@@ -1,4 +1,3 @@
-
 #include <commons/log.h>
 #include <stdint.h>
 
@@ -19,7 +18,7 @@
  * @DESC
  *
  */
-void * map_file(char *);
+void * map_file(char *, int);
 
 /**
  * @NAME unmap_file
@@ -50,7 +49,7 @@ typedef struct {
  * @DESC
  *
  */
-int dn_get_block(int, int, t_log *);
+t_dn_get_block_resp * dn_get_block(int, int, t_log *);
 
 /**
  * @NAME dn_get_block_recv_req

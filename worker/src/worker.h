@@ -23,7 +23,6 @@
 #include <shared-library/worker-prot.h>
 
 #define	SOCKET_BACKLOG 			100
-#define BUFFER_SIZE 			2
 #define BLOCK_SIZE 			1048576
 
 typedef struct{
@@ -36,5 +35,6 @@ typedef struct{
 
 
 void load_properties(void);
+void create_script_file(char *script_filename, int script_size, void* script );
 
 #endif /* WORKER_H_ */

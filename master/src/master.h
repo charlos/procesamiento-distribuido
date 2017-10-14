@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+int yama_socket;
 
 typedef struct {
 	char * ruta_trans;
@@ -50,7 +51,8 @@ typedef struct {
 master_cfg * crear_config();
 
 struct_file * read_file(char * path);
-int atender_respuesta(void * resp);
+int atender_respuesta_transform(void * resp);
+int atender_respuesta_reduccion(void * resp);
 pedido_master * crear_pedido_yama(char ** argv);
 
 #endif /* MASTER_H_ */

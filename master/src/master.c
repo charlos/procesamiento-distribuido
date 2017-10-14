@@ -22,18 +22,18 @@ int main(int argc, char ** argv) {
 	pedido_master * pedido = crear_pedido_yama(argv);
 	transformador_file = read_file(pedido->ruta_trans);
 
-	int yama_socket = connect_to_socket(master_config->ip_yama,
+	yama_socket = connect_to_socket(master_config->ip_yama,
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
 
 	// RECV LOOP
 	int * operation_code;
-	respuesta_yama * buffer;
-	int status = recv(yama_socket, operation_code, sizeof(int), 0);
+	respuesta_yama_transform * buffer;
+	int status = 1;
 
-	while (status != -1 && operation_code == 1) {
-		status = recv(yama_socket, buffer, sizeof(respuesta_yama), 0);
+	while (status != -1) {
+		status = yama_response_recv(&yama_socket, buffer);
 
 		if (status != -1) {
 
@@ -41,10 +41,9 @@ int main(int argc, char ** argv) {
 			int s;
 			pthread_attr_t attr;
 			s = pthread_attr_init(&attr);
-			respuesta_yama * respuesta = malloc(sizeof(respuesta_yama));
 			void* res;
 
-			s = pthread_create(&respuesta->thread_id, &attr, &atender_respuesta,
+			s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_transform,
 					buffer);
 			if (s != 0) {
 
@@ -53,7 +52,7 @@ int main(int argc, char ** argv) {
 			if (s != 0) {
 
 			}
-			s = pthread_join(respuesta->thread_id, res);
+			s = pthread_join(buffer->thread_id, res);
 			if (s != 0) {
 
 			}
@@ -64,6 +63,34 @@ int main(int argc, char ** argv) {
 	}
 
 	// REDUCCION LOCAL
+	int status_reduccion;
+	respuesta_yama_reduccion * paquete_reduccion = malloc(
+			sizeof(respuesta_yama_reduccion));
+	do {
+		status_reduccion = reduccion_local_res_recv(&yama_socket,
+				paquete_reduccion);
+
+		// Genero un hilo que atienda la respuesta yama
+		int s;
+		pthread_attr_t attr;
+		s = pthread_attr_init(&attr);
+		void* res;
+
+		s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_reduccion,
+				buffer);
+		if (s != 0) {
+
+		}
+		s = pthread_attr_destroy(&attr);
+		if (s != 0) {
+
+		}
+		s = pthread_join(buffer->thread_id, res);
+		if (s != 0) {
+
+		}
+
+	} while (status_reduccion != -1);
 
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
@@ -89,8 +116,8 @@ pedido_master * crear_pedido_yama(char ** argv) {
 
 	return pedido;
 }
-int atender_respuesta(void * args) {
-	respuesta_yama * respuesta = (respuesta_yama *) args;
+int atender_respuesta_transform(void * args) {
+	respuesta_yama_transform * respuesta = (respuesta_yama_transform *) args;
 
 	ip_port_combo * combo = split_ipport(respuesta->ip_port);
 
@@ -99,18 +126,25 @@ int atender_respuesta(void * args) {
 			respuesta->bytes_ocupados, respuesta->archivo_temporal,
 			transformador_file->filesize, transformador_file->file, logger);
 
-	t_request_transformation * worker_response = transform_req_recv(
-			socket_worker, logger);
-
-	// NOTIFICA A YAMA
+	int * result = malloc(sizeof(int));
+	int status = transform_res_recv(&socket_worker, result);
+	if (status != -1) {
+		// NOTIFICA A YAMA
+		status = yama_transform_res_send(&yama_socket, result);
+	}
+	free(respuesta);
+	free(combo);
+	free(result);
+	return status;
+}
+int atender_respuesta_reduccion(void * resp) {
 
 }
 struct_file * read_file(char * path) {
 	FILE * file;
-	void *buffer = malloc(255);
 	struct stat st;
-	char * dir = string_trim(&path);
-	file = fopen(dir, "r");
+	string_trim(&path);
+	file = fopen(path, "r");
 
 	if (file) {
 		fstat(file, &st);

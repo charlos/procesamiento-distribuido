@@ -1,13 +1,13 @@
+#include <commons/config.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <shared-library/data-node-prot.h>
 #include <shared-library/file-system-prot.h>
-#include <commons/config.h>
 #include <shared-library/socket.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <sys/mman.h>
 #include <stdarg.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include "data-node.h"
 
 t_dn_conf * dn_conf;
@@ -15,14 +15,14 @@ t_log * logger;
 int fs_socket;
 void * data_bin_mf_ptr;
 
-void load_dn_properties(void);
-void create_logger(void);
+void set_block();
+void load_dn_properties(char *);
 void init(void);
 void get_block();
-void set_block();
+void create_logger(void);
 
 int main(int argc, char * argv[]) {
-	load_dn_properties();
+	load_dn_properties(argv[1]); // TODO
 	create_logger();
 	init();
 
@@ -47,8 +47,9 @@ int main(int argc, char * argv[]) {
 /**
  * @NAME load_dn_properties
  */
-void load_dn_properties(void) {
-	t_config * conf = config_create("/home/utnso/node.cfg");
+void load_dn_properties(char * cfg_path) {
+	//t_config * conf = config_create("/home/utnso/node.cfg"); // TODO
+	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = config_get_string_value(conf, "NOMBRE_NODO");
 	dn_conf->port = config_get_string_value(conf, "PUERTO_DATANODE");
@@ -83,7 +84,7 @@ void init(void) {
 		// fs handshake error
 		exit(EXIT_FAILURE);
 	}
-	data_bin_mf_ptr = map_file(dn_conf->data_bin_path);
+	data_bin_mf_ptr = map_file(dn_conf->data_bin_path, O_RDWR);
 }
 
 /**

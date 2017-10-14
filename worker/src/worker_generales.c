@@ -8,6 +8,7 @@
 #include "worker.h"
 
 extern t_worker_conf* worker_conf;
+extern FILE *fptr;
 
 void load_properties(void) {
 	t_config * conf = config_create("./nodo.cfg");
@@ -18,4 +19,16 @@ void load_properties(void) {
 	worker_conf->worker_port = config_get_int_value(conf, "PUERTO_WORKER");
 	worker_conf->databin_path = config_get_string_value(conf, "RUTA_DATABIN");
 	free(conf);
+}
+
+
+void create_script_file(char *script_filename, int script_size, void* script ){
+	void* buffer;
+	fptr = fopen(script_filename, O_RDWR | O_CREAT | O_SYNC);
+	buffer = malloc(script_size);
+	memcpy(buffer,script,script_size);
+	fputs(buffer,fptr);
+	fflush(fptr);
+	fclose(fptr);
+	free(buffer);
 }
