@@ -1,0 +1,63 @@
+
+
+-- mkdir /dir01
+
+-- mkdir /dir01/dir02
+
+-- mkdir /dir01/dir02/dir03
+
+-- cpfrom /home/utnso/MOCK_DATA.csv /dir01/dir02/dir03 t
+
+
+
+-- cpto /dir01/dir02/dir03/MOCK_DATA.csv /home/utnso/cpto
+
+
+
+-- info /dir01/dir02/dir03/MOCK_DATA.csv
+
+-- rm -b /dir01/dir02/dir03/MOCK_DATA.csv 5 0
+
+-- info /dir01/dir02/dir03/MOCK_DATA.csv
+
+-- rm -b /dir01/dir02/dir03/MOCK_DATA.csv 4 0
+
+-- info /dir01/dir02/dir03/MOCK_DATA.csv
+
+-- rm -b /dir01/dir02/dir03/MOCK_DATA.csv 5 1
+
+-- cpblock /dir01/dir02/dir03/MOCK_DATA.csv 5 Nodo2
+
+-- cpblock /dir01/dir02/dir03/MOCK_DATA.csv 4 Nodo2
+
+
+
+-- mkdir /dir01/dir02/dir03/dir04
+
+-- ls /dir01/dir02/dir03
+
+-- rm -d /dir01/dir02/dir03
+
+-- rm /dir01/dir02/dir03/MOCK_DATA.csv
+
+-- rm -d /dir01/dir02/dir03/dir04
+
+-- rm -d /dir01/dir02/dir03
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
