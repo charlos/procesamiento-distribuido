@@ -47,6 +47,8 @@ int main(void) {
 	free(resp->file_metadata);
 	free(resp);
 
+	TDE_create();
+
 	recibir_solicitudes_master();
 
 	return EXIT_SUCCESS;
@@ -137,12 +139,12 @@ void inicializar(){
 
 void etapa_transformacion(){
 	// se conecta al FS para obtener info del archivo
-	t_info_archivo infoArchivo = create_info_archivo();
-	infoArchivo = solicitar_info_archivo();
-	t_orden_transformaciones orden_transformacion = create_orden_transformacion();
-	orden_transformaciones = planificar_transformacion(infoArchivo);
+	t_list* list_infoArchivo;
+	list_infoArchivo = solicitar_info_archivo();
+	t_list* lista_transformaciones;
+	lista_transformaciones = planificar_transformacion(list_infoArchivo);
 
-	enviar_orden_transformacion(orden_transformaciones);
+	enviar_lista_transformacion(lista_transformaciones);
 }
 
 void atender_resultado_transformacion(){

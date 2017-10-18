@@ -15,4 +15,5 @@
 #include "helper.h"
 
 
+
 #endif /* YAMA_H_ */
