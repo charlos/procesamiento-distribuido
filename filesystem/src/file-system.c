@@ -135,21 +135,12 @@ int main(int argc, char * argv[]) {
 				free(hs_req);
 				continue;
 			} else {
-				switch (hs_req->type) {
-				case YAMA:
-					// TODO
+				if (status == STEADY) {
 					hs_result = SUCCESS;
-					fs_handshake_send_resp(new_client, hs_result);
-					free(hs_req);
-					break;
-				case WORKER:
-					// TODO
-					hs_result = SUCCESS;
-					fs_handshake_send_resp(new_client, hs_result);
-					free(hs_req);
-					break;
-				default:;
+				} else {
+					hs_result = UNSTEADY_FS;
 				}
+				fs_handshake_send_resp(new_client, hs_result);
 			}
 		} else {
 			close_client(* new_client);
@@ -741,7 +732,6 @@ void get_metadata_file(int * client_socket) {
 	md_file->file_size = config_get_int_value(md_file_cfg, "TAMANIO");
 	md_file->type = (strcmp(type, "TEXTO") == 0) ? TEXT : BINARY;
 	md_file->block_list = list_create();
-	free(type);
 
 	t_fs_file_block_metadata * block_md;
 	t_fs_block_copy * copy_md;
@@ -847,7 +837,9 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	t_fs_upload_file_req * req = malloc(sizeof(t_fs_upload_file_req));
 	req->path = string_new();
 	string_append(&(req->path), yamafs_dir);
-	string_append(&(req->path), file_name);
+	if(strcmp(yamafs_dir, "/") != 0)string_append(&(req->path), "/");
+		string_append(&(req->path), file_name);
+
 	req->file_size = sb.st_size;
 	req->type = type;
 	req->buffer = map_file(file_path, O_RDWR);
@@ -879,7 +871,7 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
  */
 int uploading_file(t_fs_upload_file_req * req) {
 
-	if (((req->type) != BINARY) || ((req->type) != TEXT)) {
+	if (((req->type) != BINARY) && ((req->type) != TEXT)) {
 		return UNSUPPORTED_FILE_TYPE;
 	}
 
@@ -1117,9 +1109,9 @@ int assign_blocks_to_file(t_config ** file, int dir_index, char * file_name, cha
 		config_save(nodes_table);
 
 		assigned_block = assign_node_block(cpy_01_node);
-		fprintf(md_file, "BLOQUE%dCOPIA0=[%s, %d]\n", (required_block->block), cpy_01_node, assigned_block);
+		fprintf(md_file, "BLOQUE%dCOPIA0=[%s,%d]\n", (required_block->block), cpy_01_node, assigned_block);
 		assigned_block = assign_node_block(cpy_02_node);
-		fprintf(md_file, "BLOQUE%dCOPIA1=[%s, %d]\n", (required_block->block), cpy_02_node, assigned_block);
+		fprintf(md_file, "BLOQUE%dCOPIA1=[%s,%d]\n", (required_block->block), cpy_02_node, assigned_block);
 		fprintf(md_file, "BLOQUE%dBYTES=%d\n", (required_block->block), (required_block->bytes));
 
 		free(cpy_02_node);
@@ -1566,8 +1558,11 @@ void fs_make_dir(char * path_dir) {
  */
 int make_dir(int parent_dir, char * dir) {
 	t_fs_directory * fs_dir = (t_fs_directory *) directories_mf_ptr;
-	int index = 0;
+	fs_dir++;
+
+	int index = 1;
 	while (index < DIRECTORIES_AMOUNT) {
+
 		if (index == parent_dir){
 			index++;
 			fs_dir++;
@@ -1717,7 +1712,7 @@ void ls(char * dir_path) {
 	struct dirent * ent;
 	DIR * yamafs_dir = opendir(yamafs_dir_path);
 	while ((ent = readdir(yamafs_dir)) != NULL) {
-		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0) && ((ent->d_type) == DT_DIR))
+		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0) && ((ent->d_type) != DT_DIR))
 			printf("-> %s (regular file)\n", (ent->d_name));
 	}
 	closedir(yamafs_dir);
@@ -1941,7 +1936,7 @@ void rm_file(char * file_path) {
 	fprintf(temp,"NODOS=%s\n", node_list_str);
 	free(node_list_str);
 
-	int fs_free_size = config_get_int_value(nodes_table, "LIBRE");
+	int fs_free_size = 0;
 	int node_free_size;
 	char * key;
 	index = 0;
@@ -1977,6 +1972,7 @@ void rm_file(char * file_path) {
 	free(nodes);
 	free(temp_data_bin_path);
 	free(data_bin_path);
+	printf("the file was deleted successfully!\n");
 }
 
 /**
@@ -2128,9 +2124,8 @@ void rm_file_block(char * file_path, int file_block, int cpy_n) {
 	char * md_temp_file_path = string_from_format("%s/metadata/archivos/%d/%s.temp", (fs_conf->mount_point), dir_index, yamafs_file);
 	FILE * md_temp_file = fopen(md_temp_file_path, "w");
 
-	char * value_str;
 	int block = 0;
-	char bytes_key = string_from_format("BLOQUE%dBYTES", block);
+	char * bytes_key = string_from_format("BLOQUE%dBYTES", block);
 	while (config_has_property(md_file, bytes_key)) {
 		cpy = 0;
 		while (cpy < keys_amount) {
@@ -2140,9 +2135,7 @@ void rm_file_block(char * file_path, int file_block, int cpy_n) {
 			}
 			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
 			if (config_has_property(md_file, cpy_key)) {
-				value_str = config_get_string_value(md_file, cpy_key);
-				fprintf(md_temp_file,"%s=%d\n", cpy_key, value_str);
-				free(value_str);
+				fprintf(md_temp_file,"%s=%s\n", cpy_key, config_get_string_value(md_file, cpy_key));
 			}
 			free(cpy_key);
 			cpy++;
@@ -2155,12 +2148,10 @@ void rm_file_block(char * file_path, int file_block, int cpy_n) {
 	free(bytes_key);
 
 	fprintf(md_temp_file,"TAMANIO=%d\n", config_get_int_value(md_file, "TAMANIO"));
-	value_str = config_get_string_value(md_file, "TIPO");
-	fprintf(md_temp_file,"TIPO=%s", value_str);
-	free(value_str);
+	fprintf(md_temp_file,"TIPO=%s", config_get_string_value(md_file, "TIPO"));
 	fclose(md_temp_file);
 
-	char to_remove_key = string_from_format("BLOQUE%dCOPIA%d", file_block, cpy_n);
+	char * to_remove_key = string_from_format("BLOQUE%dCOPIA%d", file_block, cpy_n);
 	char ** data = config_get_array_value(md_file, to_remove_key);
 	char * node = string_duplicate(data[0]);
 	int node_block = atoi(data[1]);
@@ -2232,6 +2223,7 @@ void rm_file_block(char * file_path, int file_block, int cpy_n) {
 	free(node);
 	free(temp_data_bin_path);
 	free(data_bin_path);
+	printf("the file block was deleted successfully!\n");
 }
 
 
@@ -2254,11 +2246,49 @@ void rm_dir(char * dir_path) {
 		printf("error: directory not exists.\nplease try again...\n");
 		return;
 	}
+
+	char * yamafs_dir_path = string_from_format("%s/metadata/archivos/%d", (fs_conf->mount_point), dir_index);
+	struct dirent * ent;
+	DIR * yamafs_dir = opendir(yamafs_dir_path);
+	while ((ent = readdir(yamafs_dir)) != NULL) {
+		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0) && ((ent->d_type) == DT_REG)) {
+			rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+			closedir(yamafs_dir);
+			free(yamafs_dir_path);
+			printf("error: non-empty directory.\nplease try again...\n");
+			return;
+		}
+	}
+	closedir(yamafs_dir);
+	free(yamafs_dir_path);
+
 	t_fs_directory * fs_dir = (t_fs_directory *) directories_mf_ptr;
+	fs_dir++;
+	int index = 1;
+	while (index < DIRECTORIES_AMOUNT) {
+		if (index == dir_index) {
+			index++;
+			fs_dir++;
+			continue;
+		}
+		rw_lock_unlock(directories_locks, LOCK_READ, index);
+		if ((fs_dir->parent_dir > 0) && (fs_dir->parent_dir == dir_index)) {
+			rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+			rw_lock_unlock(directories_locks, UNLOCK, index);
+			printf("error: non-empty directory.\nplease try again...\n");
+			return;
+		}
+		rw_lock_unlock(directories_locks, UNLOCK, index);
+		index++;
+		fs_dir++;
+	}
+
+	fs_dir = (t_fs_directory *) directories_mf_ptr;
 	fs_dir += dir_index;
 	fs_dir->parent_dir = -1;
 	strcpy(&(fs_dir->name),"\0");
 	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+	printf("the directory was deleted successfully!\n");
 }
 
 
@@ -2355,6 +2385,12 @@ void cpblock(char * file_path, int file_block, char * node) {
 	free(value_str);
 	free(key);
 	config_save(nodes_table);
+
+	value_str = string_itoa((config_get_int_value(nodes_table, "LIBRE")) - 1);
+	config_set_value(nodes_table, "LIBRE", value_str);
+	free(value_str);
+	config_save(nodes_table);
+
 	int assigned_block = assign_node_block(node);
 
 	pthread_mutex_unlock(&nodes_table_m_lock);
@@ -2384,9 +2420,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 		while (cpy < keys_amount) {
 			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
 			if (config_has_property(md_file, cpy_key)) {
-				value_str = config_get_string_value(md_file, cpy_key);
-				fprintf(md_temp_file,"%s=%d\n", cpy_key, value_str);
-				free(value_str);
+				fprintf(md_temp_file,"%s=%s\n", cpy_key, config_get_string_value(md_file, cpy_key));
 			}
 			free(cpy_key);
 			cpy++;
@@ -2398,11 +2432,9 @@ void cpblock(char * file_path, int file_block, char * node) {
 	}
 	free(bytes_key);
 
-	fprintf(md_temp_file,"BLOQUE%dCOPIA%d=[%s, %d]\n", file_block, (last_cpy + 1), node, assigned_block);
+	fprintf(md_temp_file,"BLOQUE%dCOPIA%d=[%s,%d]\n", file_block, (last_cpy + 1), node, assigned_block);
 	fprintf(md_temp_file,"TAMANIO=%d\n", config_get_int_value(md_file, "TAMANIO"));
-	value_str = config_get_string_value(md_file, "TIPO");
-	fprintf(md_temp_file,"TIPO=%s", value_str);
-	free(value_str);
+	fprintf(md_temp_file,"TIPO=%s", config_get_string_value(md_file, "TIPO"));
 	fclose(md_temp_file);
 
 	config_destroy(md_file);
@@ -2414,6 +2446,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 	free(md_temp_file_path);
 	free(base_c);
 	free(dir_c);
+	printf("the block was copied successfully!\n");
 }
 
 
@@ -2454,13 +2487,10 @@ void info(char * file_path) {
 
 	t_config * md_file = config_create(md_file_path);
 	free(md_file_path);
-	char * value_str;
 
 	printf("  file: %s\n", file_path);
-	printf("  size: %d\n", config_get_int_value(md_file, "TAMANIO"));
-	value_str = config_get_string_value(md_file, "TIPO");
-	printf("  type: %s\n", value_str);
-	free(value_str);
+	printf("  size: %d bytes\n", config_get_int_value(md_file, "TAMANIO"));
+	printf("  type: %s\n", config_get_string_value(md_file, "TIPO"));
 
 	int block = 0;
 	int cpy;
@@ -2474,9 +2504,7 @@ void info(char * file_path) {
 		while (cpy < keys_amount) {
 			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
 			if (config_has_property(md_file, cpy_key)) {
-				value_str = config_get_string_value(md_file, cpy_key);
-				printf("  %s=%s\n", cpy_key, value_str);
-				free(value_str);
+				printf("  %s=%s\n", cpy_key, config_get_string_value(md_file, cpy_key));
 			}
 			free(cpy_key);
 			cpy++;
@@ -2620,7 +2648,7 @@ void cat_wrapper(char ** args);
 void mkdir_wrapper(char ** args);
 void cpfrom_wrapper(char ** args);
 void cpto_wrapper(char ** args);
-void cpblock_wrapper(char ** args);
+void cpblock_wrapper(char **args);
 void ls_wrapper(char ** args);
 void info_wrapper(char ** args);
 
@@ -2636,7 +2664,7 @@ t_command comandos[] = {
 		{"cpblock", cpblock_wrapper},
 		{"ls", ls_wrapper},
 		{"info", info_wrapper},
-		{ (char *) NULL, (Function *) NULL }
+		{ (char *)NULL, (Function *)NULL}
 };
 
 /**
@@ -2648,6 +2676,7 @@ void fs_console(void * unused) { // TODO
 
 	while(1){
 		char* line = readline("Ingrese comando:\n>");
+		//TODO Ver como solucionar lo del EoF
 		if(strcmp(line, "exit") == 0){
 			free(line);
 			break;
@@ -2769,8 +2798,8 @@ void mkdir_wrapper(char ** args) {
 }
 
 void cpfrom_wrapper(char ** args) {
-	if ((strcmp(args[2], "t") == 0) || (strcmp(args[2], "b") == 0)) {
-		cpfrom(args[0], args[1], ((strcmp(args[2], "t") == 0) ? TEXT : BINARY));
+	if ((*args[2] == 't') || (*args[2] == 'b')) {
+		cpfrom(args[0], args[1], *args[2]);
 	} else {
 		printf("error: unsupported file type.\nplease try again...\n");
 	}
@@ -2784,17 +2813,13 @@ void cpblock_wrapper(char ** args) {
 	cpblock(args[0], atoi(args[1]), args[2]);
 }
 
-void ls_wrapper(char ** args) {
+void ls_wrapper(char **args){
 	ls(args[0]);
 }
 
-void info_wrapper(char ** args) {
+void info_wrapper(char **args){
 	info(args[0]);
 }
-
-
-
-
 
 
 

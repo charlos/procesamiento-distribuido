@@ -26,6 +26,7 @@
 #define	CORRUPTED_FILE					-208 // corrupted file
 #define	DISCONNECTED_NODE 				-209 // disconnected node
 #define	UNSUPPORTED_FILE_TYPE     		-210 // unsupported file type
+#define	UNSTEADY_FS			     		-211 // unsteady fs
 
 /**
  * @NAME fs_recv_operation_code
