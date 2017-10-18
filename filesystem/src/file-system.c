@@ -837,8 +837,9 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	t_fs_upload_file_req * req = malloc(sizeof(t_fs_upload_file_req));
 	req->path = string_new();
 	string_append(&(req->path), yamafs_dir);
-	string_append(&(req->path), "/");
-	string_append(&(req->path), file_name);
+	if(strcmp(yamafs_dir, "/") != 0)string_append(&(req->path), "/");
+		string_append(&(req->path), file_name);
+
 	req->file_size = sb.st_size;
 	req->type = type;
 	req->buffer = map_file(file_path, O_RDWR);
