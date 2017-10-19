@@ -91,6 +91,7 @@ int connect_node(int *, char *, int);
 int assign_node_block(char *);
 int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
 char * assign_node(char *);
+bool is_number(char *);
 bool in_ignore_list(int, t_list *);
 bool dir_exists(int, int, char *);
 
@@ -204,6 +205,11 @@ void init(bool clean_fs) {
 	if ((stat(metadata_path, &sb) < 0) || (stat(metadata_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
 		mkdir(metadata_path, S_IRWXU | S_IRWXG | S_IRWXO);
 
+	// temp directory
+	char * temp_path = string_from_format("%s/temp", (fs_conf->mount_point));
+	if ((stat(temp_path, &sb) < 0) || (stat(temp_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
+		mkdir(temp_path, S_IRWXU | S_IRWXG | S_IRWXO);
+
 	// files directory
 	char * files_path = string_from_format("%s/archivos", metadata_path);
 	if ((stat(files_path, &sb) < 0) || (stat(files_path, &sb) == 0 && !(S_ISDIR(sb.st_mode))))
@@ -263,6 +269,7 @@ void init(bool clean_fs) {
 	free(directories_file_path);
 	free(root_files_path);
 	free(files_path);
+	free(temp_path);
 	free(metadata_path);
 }
 
@@ -837,9 +844,9 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 	t_fs_upload_file_req * req = malloc(sizeof(t_fs_upload_file_req));
 	req->path = string_new();
 	string_append(&(req->path), yamafs_dir);
-	if(strcmp(yamafs_dir, "/") != 0)string_append(&(req->path), "/");
-		string_append(&(req->path), file_name);
-
+	if (strcmp(yamafs_dir, "/") != 0)
+		string_append(&(req->path), "/");
+	string_append(&(req->path), file_name);
 	req->file_size = sb.st_size;
 	req->type = type;
 	req->buffer = map_file(file_path, O_RDWR);
@@ -1713,7 +1720,7 @@ void ls(char * dir_path) {
 	DIR * yamafs_dir = opendir(yamafs_dir_path);
 	while ((ent = readdir(yamafs_dir)) != NULL) {
 		if ((strcmp(ent->d_name, ".") != 0) && (strcmp(ent->d_name, "..") != 0) && ((ent->d_type) != DT_DIR))
-			printf("-> %s (regular file)\n", (ent->d_name));
+			printf("-rw-rw-r-- %s\n", (ent->d_name));
 	}
 	closedir(yamafs_dir);
 	free(yamafs_dir_path);
@@ -1728,7 +1735,7 @@ void ls(char * dir_path) {
 		}
 		rw_lock_unlock(directories_locks, LOCK_READ, index);
 		if (((fs_dir->parent_dir) >= 0) && ((fs_dir->parent_dir) == dir_index)) {
-			printf("-> %s (directory)\n", (fs_dir->name));
+			printf("drwxrwxr-x %s\n", (fs_dir->name));
 		}
 		rw_lock_unlock(directories_locks, UNLOCK, index);
 		index++;
@@ -2619,6 +2626,57 @@ void cat(char * file_path) {
 
 
 
+//	╔══════════════════════════════════════════════════════════════╗
+//	║ COMMAND: MD5                                                 ║
+//	╚══════════════════════════════════════════════════════════════╝
+
+/**
+ * @NAME md5
+ */
+void md5(char * file_path) {
+
+	char * dir_c = string_duplicate(file_path);
+	char * base_c = string_duplicate(file_path);
+	char * yamafs_dir = dirname(dir_c);
+	char * yamafs_file = basename(base_c);
+
+	int dir_index = get_dir_index(yamafs_dir, LOCK_WRITE, NULL);
+	if (dir_index == ENOTDIR) {
+		free(base_c);
+		free(dir_c);
+		printf("error: file doesn't exist.\nplease try again...\n");
+		return;
+	}
+
+	struct stat sb;
+	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, yamafs_file);
+	if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+		free(md_file_path);
+		free(base_c);
+		free(dir_c);
+		printf("error: file doesn't exist.\nplease try again...\n");
+		return;
+	}
+	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+
+	char * temp_path = string_from_format("%s/temp", (fs_conf->mount_point));
+	char * temp_file_path = string_from_format("%s/%s", temp_path, yamafs_file);
+	char * command = string_from_format("md5sum %s", temp_file_path);
+
+	cpto(file_path, temp_path);
+	system(command);
+	remove(temp_file_path);
+
+	free(command);
+	free(temp_file_path);
+	free(temp_path);
+	free(md_file_path);
+	free(base_c);
+	free(dir_c);
+}
+
+
 
 
 
@@ -2637,20 +2695,21 @@ void cat(char * file_path) {
 //	║                                                     CONSOLE                                                     ║
 //	╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 
-char ** fileman_completion(char* line, int start, int end);
-int execute_line(char * line);
-t_command * find_command(char * line);
-void format_wrapper(char ** args);
 void rm_wrapper(char ** args);
 void rename_wrapper(char ** args);
 void mv_wrapper(char ** args);
-void cat_wrapper(char ** args);
 void mkdir_wrapper(char ** args);
-void cpfrom_wrapper(char ** args);
-void cpto_wrapper(char ** args);
-void cpblock_wrapper(char **args);
+void md5_wrapper(char ** args);
 void ls_wrapper(char ** args);
 void info_wrapper(char ** args);
+void format_wrapper(char ** args);
+void cpto_wrapper(char ** args);
+void cpfrom_wrapper(char ** args);
+void cpblock_wrapper(char ** args);
+void cat_wrapper(char ** args);
+t_command * find_command(char * line);
+int execute_line(char * line);
+char ** fileman_completion(char* line, int start, int end);
 
 t_command comandos[] = {
 		{"format", format_wrapper},
@@ -2662,22 +2721,22 @@ t_command comandos[] = {
 		{"cpfrom", cpfrom_wrapper},
 		{"cpto", cpto_wrapper},
 		{"cpblock", cpblock_wrapper},
+		{"md5", md5_wrapper},
 		{"ls", ls_wrapper},
 		{"info", info_wrapper},
-		{ (char *)NULL, (Function *)NULL}
+		{(char *) NULL, (Function *) NULL}
 };
 
 /**
  * @NAME fs_console
  */
-void fs_console(void * unused) { // TODO
+void fs_console(void * unused) {
 
-	rl_attempted_completion_function = (CPPFunction *)fileman_completion;
+	rl_attempted_completion_function = (CPPFunction *) fileman_completion;
 
-	while(1){
-		char* line = readline("Ingrese comando:\n>");
-		//TODO Ver como solucionar lo del EoF
-		if(strcmp(line, "exit") == 0){
+	while (1) {
+		char * line = readline("[user@yamafs ~]$:"); //TODO Ver como solucionar lo del EoF
+		if (strcmp(line, "exit") == 0){
 			free(line);
 			break;
 		}
@@ -2687,20 +2746,22 @@ void fs_console(void * unused) { // TODO
 	}
 }
 
-int execute_line(char* line){
+/**
+ * @NAME execute_line
+ */
+int execute_line(char * line) {
 
-	char* line_aux = string_duplicate(line);
-	int i=0;
-	while(line_aux[i] != ' ')i++;
-	char* word = malloc(sizeof(char)*i);
+	char * line_aux = string_duplicate(line);
+	int i = 0;
+	while (line_aux[i] != ' ') i++;
+	char * word = malloc(sizeof(char) * i);
 	strncpy(word, line_aux, i);
 	word[i] = '\0';
-
-	t_command *command = find_command (word);
+	t_command * command = find_command (word);
 
 	i++;
-	char **args = string_split(line_aux + i, " ");
-	if (!command){
+	char ** args = string_split(line_aux + i, " ");
+	if (!command) {
 		fprintf (stderr, "%s: No such command for YAMA FileSystem Console.\n", word);
 		return (-1);
 	}
@@ -2708,117 +2769,224 @@ int execute_line(char* line){
 	free(line_aux);
 	/* Call the function. */
 	(*(command->funcion)) (args);
+
 	return 1;
 }
 
-t_command *find_command(char* line){
+/**
+ * @NAME find_command
+ */
+t_command * find_command(char * line) {
 	register int i;
 
 	for (i = 0; comandos[i].name; i++)
 		if (strcmp (line, comandos[i].name) == 0)
 			return (&comandos[i]);
 
-	return ((t_command *)NULL);
+	return ((t_command *) NULL);
 }
 
-char* command_generator(char* text, int state) {
+/**
+ * @NAME command_generator
+ */
+char * command_generator(char * text, int state) {
 	static int list_index, len;
-	char *name;
+	char * name;
 
 	/* If this is a new word to complete, initialize now.  This includes
-	     saving the length of TEXT for efficiency, and initializing the index
-	     variable to 0. */
-	if (!state)
-	{
+	   saving the length of TEXT for efficiency, and initializing the index
+	   variable to 0. */
+	if (!state) {
 		list_index = 0;
 		len = strlen (text);
 	}
 
 	/* Return the next name which partially matches from the command list. */
-	while (name = comandos[list_index].name)
-	{
+	while (name = comandos[list_index].name) {
 		list_index++;
-
 		if (strncmp (name, text, len) == 0)
 			return (string_duplicate(name));
 	}
 
 	/* If no names matched, then return NULL. */
-	return ((char *)NULL);
+	return ((char *) NULL);
 }
 
-char ** fileman_completion(char* line, int start, int end){
-	char **matches;
+/**
+ * @NAME fileman_completion
+ */
+char ** fileman_completion(char * line, int start, int end) {
+	char ** matches;
 
-	matches = (char **)NULL;
+	matches = (char **) NULL;
 
 	/* If this word is at the start of the line, then it is a command
-	     to complete.  Otherwise it is the name of a file in the current
-	     directory. */
+	   to complete.  Otherwise it is the name of a file in the current
+	   directory. */
 	if (start == 0)
 		matches = completion_matches(line, command_generator);
 
 	return (matches);
 }
 
-
-
-
-//
-// TODO: free params, params validation
-//
+/**
+ * @NAME format_wrapper
+ */
 void format_wrapper(char ** args) {
 	format();
 }
 
+/**
+ * @NAME rm_wrapper
+ */
 void rm_wrapper(char ** args){
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	if (strcmp(args[0], "-d") == 0) {
+		if (args[1] == NULL) {
+			printf("error: illegal arguments.\nplease try again...\n");
+			return;
+		}
 		rm_dir(args[1]);
 	} else if (strcmp(args[0], "-b") == 0) {
+		if (args[1] == NULL || args[2] == NULL || !is_number(args[2]) || args[3] == NULL || !is_number(args[3])) {
+			printf("error: illegal arguments.\nplease try again...\n");
+			return;
+		}
 		rm_file_block(args[1], atoi(args[2]), atoi(args[3]));
 	} else {
 		rm_file(args[0]);
 	}
 }
 
+/**
+ * @NAME rename_wrapper
+ */
 void rename_wrapper(char ** args) {
+	if (args[0] == NULL || args[1] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	fs_rename(args[0], args[1]);
 }
 
+/**
+ * @NAME mv_wrapper
+ */
 void mv_wrapper(char ** args) {
+	if (args[0] == NULL || args[1] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	move(args[0], args[1]);
 }
 
+/**
+ * @NAME cat_wrapper
+ */
 void cat_wrapper(char ** args) {
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	cat(args[0]);
 }
 
+/**
+ * @NAME mkdir_wrapper
+ */
 void mkdir_wrapper(char ** args) {
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	fs_make_dir(args[0]);
 }
 
+/**
+ * @NAME cpfrom_wrapper
+ */
 void cpfrom_wrapper(char ** args) {
-	if ((*args[2] == 't') || (*args[2] == 'b')) {
-		cpfrom(args[0], args[1], *args[2]);
+	if (args[0] == NULL || args[1] == NULL || args[2] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
+	if ((strcmp(args[2], "t") == 0) || (strcmp(args[2], "b") == 0)) {
+		cpfrom(args[0], args[1], ((strcmp(args[2], "t") == 0) ? TEXT : BINARY));
 	} else {
 		printf("error: unsupported file type.\nplease try again...\n");
 	}
 }
 
+/**
+ * @NAME cpto_wrapper
+ */
 void cpto_wrapper(char ** args) {
+	if (args[0] == NULL || args[1] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	cpto(args[0], args[1]);
 }
 
+/**
+ * @NAME cpblock_wrapper
+ */
 void cpblock_wrapper(char ** args) {
+	if (args[0] == NULL || args[1] == NULL || !is_number(args[1]) || args[2] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	cpblock(args[0], atoi(args[1]), args[2]);
 }
 
-void ls_wrapper(char **args){
+/**
+ * @NAME ls_wrapper
+ */
+void ls_wrapper(char ** args) {
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	ls(args[0]);
 }
 
-void info_wrapper(char **args){
+/**
+ * @NAME info_wrapper
+ */
+void info_wrapper(char ** args) {
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
 	info(args[0]);
+}
+
+/**
+ * @NAME info_wrapper
+ */
+void md5_wrapper(char ** args) {
+	if (args[0] == NULL) {
+		printf("error: illegal arguments.\nplease try again...\n");
+		return;
+	}
+	md5(args[0]);
+}
+
+/**
+ * @NAME is_number
+ */
+bool is_number(char * str) {
+	int j = 0;
+	while (j < strlen(str)) {
+		if(str[j] > '9' || str[j] < '0') {
+			return false;
+		}
+		j++;
+	}
+	return true;
 }
 
 
