@@ -19,33 +19,7 @@ int main(void) {
 	int file_system_socket = connect_to_socket(fs_ip, fs_port);
 
 	char * path = "/user/juan/datos/datos_personales.csv";
-	t_fs_get_file_md_resp * resp = fs_get_file_metadata(file_system_socket, path, NULL);
-	t_fs_file_metadata * file_md = resp->file_metadata;
 
-	printf(">> exec code: %d \n", resp->exec_code);
-	printf(">> path: %s \n", path);
-	printf(">> file size: %d bytes\n", file_md->file_size);
-	printf(">> type: %c \n", file_md->type);
-	printf(">> blocks: %d \n", file_md->block_list->elements_count);
-
-	t_fs_file_block_metadata * block_md;
-	int index = 0;
-	while (index < (file_md->block_list->elements_count)) {
-		block_md = (t_fs_file_block_metadata *) list_get(file_md->block_list, index);
-		printf("----------------------------------------------------\n");
-		printf(">> >> file block n°: %d \n", block_md->file_block);
-		printf(">> >> node: %d \n", block_md->node);
-		printf(">> >> node block: %d \n", block_md->node_block);
-		printf(">> >> copy node: %d \n", block_md->copy_node);
-		printf(">> >> copy node block: %d \n", block_md->copy_node_block);
-		printf(">> >> size: %d bytes\n", block_md->size);
-		printf("----------------------------------------------------\n");
-		index++;
-	}
-
-	list_destroy_and_destroy_elements(resp->file_metadata->block_list, &closure);
-	free(resp->file_metadata);
-	free(resp);
 
 	TDE_create();
 
@@ -56,7 +30,7 @@ int main(void) {
 
 void recibir_solicitudes_master(){
 
-	t_struct estructura;
+	t_struct *estructura;
 	estructura = create_struct();
 	int listening_socket;
 	listening_socket = open_socket(20, estructura->port);
@@ -110,7 +84,7 @@ void recibir_solicitudes_master(){
 }
 
 
-void atender_solicitud_master(info_solicitud){
+void atender_solicitud_master(t_info_socket_solicitud* info_solicitud){
 	switch(info_solicitud->operation_code){
 	case OC_TRANSFORMACIONES:
 		inicializar();
@@ -129,6 +103,7 @@ void atender_solicitud_master(info_solicitud){
 		atender_resultado_almacenamiento_final();
 		break;
 	default:
+		log_error(logger, "Codigo de operacion desconocido");
 		//logear ERROR
 	}
 }

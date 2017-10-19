@@ -13,7 +13,7 @@ t_struct* create_struct(){
 }
 
 t_info_archivo* info_archivo_create(){
-	return malloc(t_info_archivo);
+	return malloc(sizeof(t_info_archivo));
 }
 
 t_list* planificar_transformacion(t_list* list_infoArchivo){

@@ -8,8 +8,18 @@
 #ifndef HELPER_H_
 #define HELPER_H_
 
+#include <commons/collections/list.h>
+#include <shared-library/socket.h>
+
+#define OC_TRANSFORMACIONES 1
+#define OC_RESULTADO_TRANSFORMACION 2
+#define OC_RESULTADO_REDUCCION_LOCAL 3
+#define OC_RESULTADO_REDUCCION_GLOBAL 4
+#define OC_RESULTADO_ALMACENAMIENTO_FINAL 5
+
 	t_list* lista_worker;
 	t_list* tabla_de_estados;
+	t_log* logger;
 
 	int count_tde;
 	int count_job;
@@ -58,12 +68,21 @@
 		char* puerto;
 	}t_worker_info;
 
+	typedef struct{
+	  int file_descriptor;
+	  fd_set* set;
+	  fd_set* lectura;
+	  void * buffer;
+	  uint8_t operation_code;
+	}t_info_socket_solicitud;
+
 	t_struct* create_struct();
 	t_registro_TDE* registro_TDE_create();
 	t_info_archivo* info_archivo_create();
-	void info_archivo_destroy(*t_info_archivo);
+	void info_archivo_destroy(t_info_archivo* info_archivo);
 	t_list* planificar_transformacion(t_list* infoArchivo);
 	void algoritmo_planificacion(t_list* lista_transformaciones, t_list* list_infoArchivo);
 	int enviar_lista_transformacion(t_list* lista_transformaciones);
+	t_worker_info *find_worker_by_id(int worker_id);
 
 #endif /* HELPER_H_ */
