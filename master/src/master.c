@@ -26,71 +26,81 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
+	t_list * lista_transformacion;
 
 	// RECV LOOP
-	int * operation_code;
-	respuesta_yama_transform * buffer;
-	int status = 1;
-
-	while (status != -1) {
-		status = yama_response_recv(&yama_socket, buffer);
-
-		if (status != -1) {
-
-			// Genero un hilo que atienda la respuesta yama
-			int s;
-			pthread_attr_t attr;
-			s = pthread_attr_init(&attr);
-			void* res;
-
-			s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_transform,
-					buffer);
-			if (s != 0) {
-
-			}
-			s = pthread_attr_destroy(&attr);
-			if (s != 0) {
-
-			}
-			s = pthread_join(buffer->thread_id, res);
-			if (s != 0) {
-
-			}
-
-		} else {
-			// atiendo error ?
-		}
-	}
-
-	// REDUCCION LOCAL
-	int status_reduccion;
-	respuesta_yama_reduccion * paquete_reduccion = malloc(
-			sizeof(respuesta_yama_reduccion));
-	do {
-		status_reduccion = reduccion_local_res_recv(&yama_socket,
-				paquete_reduccion);
-
-		// Genero un hilo que atienda la respuesta yama
+//	int * operation_code;
+//	respuesta_yama_transform * buffer;
+//	int status = 1;
+	int i;
+	for(i = 0; i < list_length(lista_transformacion); i++) {
 		int s;
 		pthread_attr_t attr;
-		s = pthread_attr_init(&attr);
-		void* res;
+		respuesta_yama_transform * pedido_transformacion_worker = list_get(lista_transformacion[i]);
 
-		s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_reduccion,
-				buffer);
-		if (s != 0) {
+		s = pthread_create(&pedido_transformacion_worker->thread_id, &attr, &atender_respuesta_transform, pedido_transformacion_worker);
+		pthread_attr_destroy(&attr);
+	}
 
-		}
-		s = pthread_attr_destroy(&attr);
-		if (s != 0) {
+//	while (status != -1) {
+//		status = yama_response_recv(&yama_socket, buffer);
+//
+//		if (status != -1) {
+//
+//			// Genero un hilo que atienda la respuesta yama
+//			int s;
+//			pthread_attr_t attr;
+//			s = pthread_attr_init(&attr);
+//			void* res;
+//
+//			s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_transform,
+//					buffer);
+//			if (s != 0) {
+//
+//			}
+//			s = pthread_attr_destroy(&attr);
+//			if (s != 0) {
+//
+//			}
+//			s = pthread_join(buffer->thread_id, res);
+//			if (s != 0) {
+//
+//			}
+//
+//		} else {
+//			// atiendo error ?
+//		}
+//	}
 
-		}
-		s = pthread_join(buffer->thread_id, res);
-		if (s != 0) {
-
-		}
-
-	} while (status_reduccion != -1);
+	// REDUCCION LOCAL
+//	int status_reduccion;
+//	respuesta_yama_reduccion * paquete_reduccion = malloc(
+//			sizeof(respuesta_yama_reduccion));
+//	do {
+//		status_reduccion = reduccion_local_res_recv(&yama_socket,
+//				paquete_reduccion);
+//
+//		// Genero un hilo que atienda la respuesta yama
+//		int s;
+//		pthread_attr_t attr;
+//		s = pthread_attr_init(&attr);
+//		void* res;
+//
+//		s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_reduccion,
+//				buffer);
+//		if (s != 0) {
+//
+//		}
+//		s = pthread_attr_destroy(&attr);
+//		if (s != 0) {
+//
+//		}
+//		s = pthread_join(buffer->thread_id, res);
+//		if (s != 0) {
+//
+//		}
+//
+//	} while (status_reduccion != -1);
 
 	char* hora = temporal_get_string_time();
 	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
@@ -128,9 +138,14 @@ int atender_respuesta_transform(void * args) {
 
 	int * result = malloc(sizeof(int));
 	int status = transform_res_recv(&socket_worker, result);
+
+	resultado_transformacion * resultado = malloc(sizeof(resultado_transformacion));
+	resultado->resultado = *result;
+	resultado->job = respuesta->job;
+
 	if (status != -1) {
 		// NOTIFICA A YAMA
-		status = yama_transform_res_send(&yama_socket, result);
+		status = yama_transform_res_send(&yama_socket, resultado);
 	}
 	free(respuesta);
 	free(combo);

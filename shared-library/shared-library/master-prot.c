@@ -7,12 +7,12 @@
 
 #include "master-prot.h"
 
-int transform_res_send(int * master_socket, int * result) {
-	int status = socket_send(master_socket, result, sizeof(int), 0);
+int transform_res_send(int * master_socket, resultado_transformacion * result) {
+	int status = socket_send(master_socket, result, sizeof(resultado_transformacion), 0);
 	return status;
 }
-int transform_res_recv(int * worker_socket, int * result) {
-	int status = socket_recv(worker_socket, result, sizeof(int));
+int transform_res_recv(int * worker_socket, resultado_transformacion * result) {
+	int status = socket_recv(worker_socket, result, sizeof(resultado_transformacion));
 	return status;
 }
 int yama_request_send(int * yama_socket, char * dir_archivo_origen) {
@@ -87,7 +87,7 @@ int yama_transform_res_recv(int * master_socket, int * result) {
 	int status = socket_recv(master_socket, result, sizeof(int));
 		return status;
 }
-int reduccion_local_res_recv(int * yama_socket, respuesta_yama_reduccion * struct_reduccion) {
+int reduccion_local_res_recv(int * yama_socket, respuesta_yama_reduccion_local * struct_reduccion) {
 
 }
 ip_port_combo * split_ipport(char *ipport) {
