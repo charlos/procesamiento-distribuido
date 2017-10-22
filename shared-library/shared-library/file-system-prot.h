@@ -7,6 +7,7 @@
 #define FILE_SYSTEM_PROTOCOL_H_
 
 #define NODE_NAME_LENGTH 	10
+#define IP_PORT_LENGTH		25
 #define	FS_HANDSHAKE        1
 #define UPLOAD_FILE         2
 #define	READ_FILE           3
@@ -39,6 +40,7 @@ typedef struct {
 	int16_t exec_code;
 	char type;
 	char * node_name;
+	char * node_ip_port;
 	int32_t blocks;
 } t_fs_handshake_req;
 
@@ -47,7 +49,7 @@ typedef struct {
  * @DESC
  *
  */
-int fs_handshake(int, char, char *, int, t_log *);
+int fs_handshake(int, char, char *, char *, int, t_log *);
 
 /**
  * @NAME fs_handshake_recv_req
@@ -126,6 +128,7 @@ void fs_read_file_send_resp(int *, int, int, void *);
 
 typedef struct {
 	char node[NODE_NAME_LENGTH];
+	char ip_port[IP_PORT_LENGTH];
 	int32_t node_block;
 } t_fs_block_copy;
 

@@ -95,6 +95,7 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 			closure_tt(transf);
 			return SERVIDOR_DESCONECTADO;
 		}
+		transf->nodo = malloc(sizeof(char) * length);
 		bytes_recv = socket_recv(&socket_servidor, (transf->nodo), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
@@ -108,6 +109,7 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 			closure_tt(transf);
 			return SERVIDOR_DESCONECTADO;
 		}
+		transf->ip_port = malloc(sizeof(char) * length);
 		bytes_recv = socket_recv(&socket_servidor, (transf->ip_port), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
@@ -135,6 +137,7 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 			closure_tt(transf);
 			return SERVIDOR_DESCONECTADO;
 		}
+		transf->archivo_temporal = malloc(sizeof(char) * length);
 		bytes_recv = socket_recv(&socket_servidor, (transf->archivo_temporal), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
@@ -289,7 +292,7 @@ void yama_resultado_transf_bloque(int socket_servidor, int job_id, char * nodo, 
 	uint8_t prot_bloque = 4;
 	uint8_t prot_cod_resultado_transf = 1;
 
-	uint8_t req_cod_operacion = RESULTADO_TRANSFORMACION;
+	uint8_t req_cod_operacion = RESULTADO_TRANSFORMACION_BLOQUE;
 	uint32_t req_job_id = job_id;
 	uint32_t req_nodo_size = strlen(nodo) + 1;
 	uint32_t req_bloque = bloque;
@@ -327,6 +330,7 @@ t_yama_resultado_transf_bloque_req * yama_resultado_transf_bloque_recv_req(int *
 		request->exec_code = CLIENTE_DESCONECTADO;
 		return request;
 	}
+	request->nodo = malloc(sizeof(char) * nodo_size);
 	bytes_recv = socket_recv(socket_cliente, (request->nodo), nodo_size);
 	if (bytes_recv <= 0) {
 		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);

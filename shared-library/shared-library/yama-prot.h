@@ -8,17 +8,35 @@
 
 // CODIGOS DE OPERACION
 #define NUEVA_SOLICITUD         		   1
-#define RESULTADO_TRANSFORMACION   		   2
+#define RESULTADO_TRANSFORMACION_BLOQUE    2
+
+
+
+
+
+
+// ETAPAS
+#define TRANSFORMACION         		  	   1
+#define REPLANIFICACION       		  	   2
+#define REDUCCION_LOCAL          	   	   3
+#define REDUCCION_GLOBAL   	           	   4
+#define FINALIZADO			          	   5
+#define FINALIZADO_ERROR			   	  -1
 
 // ESTADOS TRANSFORMACION
-#define TRANSFORMACION			   		   1
-#define TRANS_REPLANIFICACION			   2
-#define TRANS_FINALIZADO_OK	   			   3
-#define TRANS_ERROR_FATAL	       		   4
+#define TRANSFORMACION_EN_PROCESO		   1
+#define TRANSFORMACION_FINALIZADO_OK	   2
+#define TRANSFORMACION_ERROR	       	  -1
 
-// RESULTADO TRAN
-#define TRANS_OK 	  		   	   		   1
-#define TRANS_CON_ERROR	   	  			  -1
+// ESTADOS TRANSFORMACION BLOQUE
+#define EN_PROCESO			  		   	   1
+#define TRANSFORMACION_OK 	  		   	   2
+#define TRANSFORMACION_ERROR  			  -1
+
+
+
+
+
 
 // CODIGOS DE RESPUESTAS
 #define	EXITO      				  	       1

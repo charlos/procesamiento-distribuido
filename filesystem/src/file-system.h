@@ -25,6 +25,7 @@ typedef struct {
 
 typedef struct {
 	char * node_name;
+	char * ip_port;
 	int size;
 	int fd;
 	t_bitarray * bitmap;
