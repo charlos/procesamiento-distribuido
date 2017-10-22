@@ -26,7 +26,7 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
-	t_list * lista_transformacion;
+	t_list * lista_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige);
 
 	// RECV LOOP
 //	int * operation_code;
@@ -71,6 +71,8 @@ int main(int argc, char ** argv) {
 //			// atiendo error ?
 //		}
 //	}
+
+
 
 	// REDUCCION LOCAL
 //	int status_reduccion;
@@ -126,7 +128,7 @@ pedido_master * crear_pedido_yama(char ** argv) {
 
 	return pedido;
 }
-int atender_respuesta_transform(void * args) {
+void atender_respuesta_transform(void * args) {
 	respuesta_yama_transform * respuesta = (respuesta_yama_transform *) args;
 
 	ip_port_combo * combo = split_ipport(respuesta->ip_port);
@@ -143,14 +145,11 @@ int atender_respuesta_transform(void * args) {
 	resultado->resultado = *result;
 	resultado->job = respuesta->job;
 
-	if (status != -1) {
-		// NOTIFICA A YAMA
-		status = yama_transform_res_send(&yama_socket, resultado);
-	}
+	yama_resultado_transf_bloque(yama_socket, resultado->job, &respuesta->nodo, resultado->resultado, logger);
+//	status = yama_transform_res_send(&yama_socket, resultado);
 	free(respuesta);
 	free(combo);
 	free(result);
-	return status;
 }
 int atender_respuesta_reduccion(void * resp) {
 
