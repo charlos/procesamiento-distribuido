@@ -33,44 +33,17 @@ int main(int argc, char ** argv) {
 //	respuesta_yama_transform * buffer;
 //	int status = 1;
 	int i;
-	for(i = 0; i < list_length(lista_transformacion); i++) {
+	for(i = 0; i < list_size(lista_transformacion); i++) {
 		int s;
 		pthread_attr_t attr;
-		respuesta_yama_transform * pedido_transformacion_worker = list_get(lista_transformacion[i]);
+		respuesta_yama_transform * pedido_transformacion_worker = list_get(lista_transformacion, i);
 
 		s = pthread_create(&pedido_transformacion_worker->thread_id, &attr, &atender_respuesta_transform, pedido_transformacion_worker);
 		pthread_attr_destroy(&attr);
 	}
 
-//	while (status != -1) {
-//		status = yama_response_recv(&yama_socket, buffer);
-//
-//		if (status != -1) {
-//
-//			// Genero un hilo que atienda la respuesta yama
-//			int s;
-//			pthread_attr_t attr;
-//			s = pthread_attr_init(&attr);
-//			void* res;
-//
-//			s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_transform,
-//					buffer);
-//			if (s != 0) {
-//
-//			}
-//			s = pthread_attr_destroy(&attr);
-//			if (s != 0) {
-//
-//			}
-//			s = pthread_join(buffer->thread_id, res);
-//			if (s != 0) {
-//
-//			}
-//
-//		} else {
-//			// atiendo error ?
-//		}
-//	}
+	// ATENDER POSIBLES ERRORES DE LAS TRANSFORMACIONES
+
 
 
 
@@ -128,8 +101,7 @@ pedido_master * crear_pedido_yama(char ** argv) {
 
 	return pedido;
 }
-void atender_respuesta_transform(void * args) {
-	respuesta_yama_transform * respuesta = (respuesta_yama_transform *) args;
+void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 
 	ip_port_combo * combo = split_ipport(respuesta->ip_port);
 

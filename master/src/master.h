@@ -51,7 +51,7 @@ typedef struct {
 master_cfg * crear_config();
 
 struct_file * read_file(char * path);
-int atender_respuesta_transform(void * resp);
+void atender_respuesta_transform(respuesta_yama_transform * resp);
 int atender_respuesta_reduccion(void * resp);
 pedido_master * crear_pedido_yama(char ** argv);
 

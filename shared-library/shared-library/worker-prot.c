@@ -40,7 +40,7 @@ int transform_req_send(int worker_socket, int block, int used_size, char* result
 	free(request);
 
 	uint8_t resp_prot_code = 2;
-	int16_t code;
+	int code;
 	int received_bytes = socket_recv(&worker_socket, &code, resp_prot_code);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ SERVER %d >> disconnected", worker_socket);
