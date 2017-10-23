@@ -1,6 +1,8 @@
 #include "file-system-prot.h"
 #include "socket.h"
 
+void closure_bc(t_fs_copy_block *);
+void closure_fbm(t_fs_file_block_metadata *);
 
 /**	╔════════════════════════╗
 	║ RECEIVE OPERATION CODE ║
@@ -380,12 +382,12 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 	}
 
 	t_fs_file_block_metadata * block_md;
-	t_fs_block_copy * copy_md;
+	t_fs_copy_block * copy_md;
 
 	uint8_t resp_prot_block_inf = sizeof(uint32_t);
 	uint8_t resp_prot_block_size_inf = sizeof(uint32_t);
 	uint8_t resp_prot_block_copies = 4;
-	uint8_t resp_prot_block_copy_inf = sizeof(t_fs_block_copy);
+	uint8_t resp_prot_block_copy_inf = sizeof(t_fs_copy_block);
 
 	int copies;
 	int j;
@@ -399,6 +401,9 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 		received_bytes = socket_recv(&server_socket, &(block_md->file_block), resp_prot_block_inf);
 		if (received_bytes <= 0) {
 			if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
+			list_destroy_and_destroy_elements(block_list, &closure_fbm);
+			free(block_md);
+			free(md_file);
 			response->exec_code = DISCONNECTED_SERVER;
 			return response;
 		}
@@ -407,6 +412,9 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 		if (received_bytes <= 0) {
 			if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
 			response->exec_code = DISCONNECTED_SERVER;
+			list_destroy_and_destroy_elements(block_list, &closure_fbm);
+			free(block_md);
+			free(md_file);
 			return response;
 		}
 
@@ -414,18 +422,26 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 		if (received_bytes <= 0) {
 			if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
 			response->exec_code = DISCONNECTED_SERVER;
+			list_destroy_and_destroy_elements(block_list, &closure_fbm);
+			free(block_md);
+			free(md_file);
 			return response;
 		}
 
 		t_list * copy_list = list_create();
 		for (j = 0; i < copies; j++) {
 
-			copy_md = (t_fs_block_copy *) malloc(resp_prot_block_copy_inf);
+			copy_md = (t_fs_copy_block *) malloc(resp_prot_block_copy_inf);
 
 			received_bytes = socket_recv(&server_socket, copy_md, resp_prot_block_copy_inf);
 			if (received_bytes <= 0) {
 				if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
 				response->exec_code = DISCONNECTED_SERVER;
+				list_destroy_and_destroy_elements(block_list, &closure_fbm);
+				list_destroy_and_destroy_elements(copy_list, &closure_bc);
+				free(block_md);
+				free(copy_md);
+				free(md_file);
 				return response;
 			}
 			list_add(copy_list, copy_md);
@@ -471,7 +487,7 @@ void fs_get_metadata_file_send_resp(int * client_socket, int resp_code, t_fs_met
 	uint8_t resp_prot_block_size_inf = sizeof(uint32_t);
 	uint8_t resp_prot_block_copies = 4;
 	// block copy inf
-	uint8_t resp_prot_block_copy_inf = sizeof(t_fs_block_copy);
+	uint8_t resp_prot_block_copy_inf = sizeof(t_fs_copy_block);
 
 	int i;
 	int j;
@@ -519,7 +535,7 @@ void fs_get_metadata_file_send_resp(int * client_socket, int resp_code, t_fs_met
 
 			j = 0;
 			while (j < (copies_list->elements_count)) {
-				memcpy(response + memcpy_pos, ((t_fs_block_copy *) list_get(copies_list, j)), resp_prot_block_copy_inf);
+				memcpy(response + memcpy_pos, ((t_fs_copy_block *) list_get(copies_list, j)), resp_prot_block_copy_inf);
 				memcpy_pos += resp_prot_block_copy_inf;
 				j++;
 			}
@@ -528,4 +544,14 @@ void fs_get_metadata_file_send_resp(int * client_socket, int resp_code, t_fs_met
 	}
 	socket_write(client_socket, response, response_size);
 	free(response);
+}
+
+void closure_fbm(t_fs_file_block_metadata * element) {
+	list_destroy_and_destroy_elements((element->copies_list), &closure_bc);
+}
+
+void closure_bc(t_fs_copy_block * element) {
+	if (element->node) free(element->node);
+	if (element->ip_port) free(element->ip_port);
+	free(element);
 }

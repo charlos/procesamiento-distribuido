@@ -16,7 +16,8 @@ typedef struct {
 	uint32_t job_id;
 	char * nodo;
 	uint32_t bloque;
-	t_list * copies_list;
+	uint32_t bytes_ocupados;
+	t_list * copias;
 	int8_t etapa;
 	char * archivo_temporal;
 	int8_t estado;

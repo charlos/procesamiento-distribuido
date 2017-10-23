@@ -130,7 +130,7 @@ typedef struct {
 	char node[NODE_NAME_LENGTH];
 	char ip_port[IP_PORT_LENGTH];
 	int32_t node_block;
-} t_fs_block_copy;
+} t_fs_copy_block;
 
 typedef struct {
 	uint32_t file_block;
