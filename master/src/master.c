@@ -31,28 +31,21 @@ int main(int argc, char ** argv) {
 	// RECV LOOP
 	int i;
 	for(i = 0; i < list_size(respuesta_transformacion->transformaciones); i++) {
-		int s;
-		pthread_t hilo_solicitud;
-		pthread_attr_t attr;
-		pthread_attr_init(&attr);
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 		t_transformacion * transformacion = list_get(respuesta_transformacion->transformaciones, i);
-
-		respuesta_yama_transform *paquete = malloc(sizeof(respuesta_yama_transform));
-		paquete->archivo_temporal = transformacion->archivo_temporal;
-		paquete->bloque = transformacion->bloque;
-		paquete->bytes_ocupados = transformacion->bytes_ocupados;
-		paquete->ip_port = transformacion->ip_port;
-		paquete->nodo = transformacion->nodo;
-		paquete->job = respuesta_transformacion->job_id;
-		free(transformacion);
-		pthread_create(&hilo_solicitud, &attr, &atender_respuesta_transform, paquete);
-		pthread_attr_destroy(&attr);
+		crear_hilo_transformador(transformacion, respuesta_transformacion->job_id);
 	}
 
-	// ATENDER POSIBLES ERRORES DE LAS TRANSFORMACIONES
+	// SE ATIENDEN POSIBLES ERRORES DE LAS TRANSFORMACIONES
 
+	int codigo_operacion;
+
+	if(codigo_operacion == TRANSFORMACION){
+		t_list *lista_transformaciones_2do_intento;
+		for(i = 0; i < list_size(lista_transformaciones_2do_intento); i++){
+			// itera sobre las transformaciones que yama volvio a solicitar
+		}
+	}
 
 
 
@@ -132,6 +125,7 @@ int atender_respuesta_reduccion(void * resp) {
 struct_file * read_file(char * path) {
 	FILE * file;
 	struct stat st;
+	// este trim nose porque rompe
 //	string_trim(&path);
 	file = fopen(path, "r");
 
@@ -160,4 +154,28 @@ void liberar_combo_ip(ip_port_combo *combo){
 	free(combo->ip);
 	free(combo->port);
 	free(combo);
+}
+
+void crear_hilo_transformador(t_transformacion *transformacion, int job_id){
+	pthread_t hilo_solicitud;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	respuesta_yama_transform *transformacion_master = crear_transformacion_master(transformacion);
+	transformacion_master->job = job_id;
+	free(transformacion);
+	pthread_create(&hilo_solicitud, &attr, &atender_respuesta_transform, transformacion_master);
+	pthread_attr_destroy(&attr);
+}
+
+respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
+	respuesta_yama_transform *transformacion_master = malloc(sizeof(respuesta_yama_transform));
+	transformacion_master->archivo_temporal = transformacion_yama->archivo_temporal;
+	transformacion_master->bloque = transformacion_yama->bloque;
+	transformacion_master->bytes_ocupados = transformacion_yama->bytes_ocupados;
+	transformacion_master->ip_port = transformacion_yama->ip_port;
+	transformacion_master->nodo = transformacion_yama->nodo;
+
+	return transformacion_master;
 }

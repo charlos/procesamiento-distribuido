@@ -57,5 +57,7 @@ int atender_respuesta_reduccion(void * resp);
 pedido_master * crear_pedido_yama(char ** argv);
 void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta);
 void liberar_combo_ip(ip_port_combo *combo);
+void crear_hilo_transformador(t_transformacion *transformacion, int job_id);
+respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
 
 #endif /* MASTER_H_ */
