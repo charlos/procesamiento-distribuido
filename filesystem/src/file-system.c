@@ -742,7 +742,7 @@ void get_metadata_file(int * client_socket) {
 	md_file->block_list = list_create();
 
 	t_fs_file_block_metadata * block_md;
-	t_fs_block_copy * copy_md;
+	t_fs_copy_block * copy_md;
 	int block = 0;
 	int cpy;
 	int keys_amount = config_keys_amount(md_file_cfg);
@@ -766,7 +766,7 @@ void get_metadata_file(int * client_socket) {
 			if (config_has_property(md_file, cpy_key)) {
 				data = config_get_array_value(md_file_cfg, cpy_key);
 				if (get_datanode_fd(data[0]) != DISCONNECTED_NODE) {
-					copy_md = (t_fs_block_copy *) malloc(sizeof(t_fs_block_copy));
+					copy_md = (t_fs_copy_block *) malloc(sizeof(t_fs_copy_block));
 					strcpy(&(copy_md->node), data[0]);
 					strcpy(&(copy_md->ip_port), get_datanode_ip_port(data[0]));
 					copy_md->node_block = atoi(data[1]);
