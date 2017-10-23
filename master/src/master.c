@@ -37,14 +37,20 @@ int main(int argc, char ** argv) {
 	}
 
 	// SE ATIENDEN POSIBLES ERRORES DE LAS TRANSFORMACIONES
+	// Se recibe el resultado de las transformaciones
+	t_yama_transformaciones_resp * respuesta_transformacion_2do_intento;
+	// Se asigna el resultado a codigo_operacion
+	int codigo_operacion = respuesta_transformacion_2do_intento->exec_code;
 
-	int codigo_operacion;
-
-	if(codigo_operacion == TRANSFORMACION){
+	while(codigo_operacion == TRANSFORMACION){
 		t_list *lista_transformaciones_2do_intento;
 		for(i = 0; i < list_size(lista_transformaciones_2do_intento); i++){
+			t_transformacion * transformacion = list_get(lista_transformaciones_2do_intento, i);
 			// itera sobre las transformaciones que yama volvio a solicitar
+			crear_hilo_transformador(transformacion, respuesta_transformacion_2do_intento->job_id);
 		}
+		// Se asigna el resultado a codigo operacion
+		codigo_operacion = 0; // TODO: Cambiar valor
 	}
 
 
