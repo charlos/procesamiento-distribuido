@@ -48,59 +48,12 @@ int main(int argc, char ** argv) {
 		while(respuesta_reduccion->exec_code == EXITO && respuesta_reduccion->etapa == REDUCCION_LOCAL) {
 			int i;
 			for(i = 0; i < list_size(respuesta_reduccion->planificados); i++) {
-
+				// obtener cada t_reduccion_local
+				// crear hilo de reduccion local
 			}
+			// recibir resultado
 		}
 	}
-
-	// SE ATIENDEN POSIBLES ERRORES DE LAS TRANSFORMACIONES
-	// Se recibe el resultado de las transformaciones
-//	t_yama_planificacion_resp * respuesta_transformacion_2do_intento;
-//	// Se asigna el resultado a codigo_operacion
-//	int codigo_operacion = respuesta_transformacion_2do_intento->exec_code;
-//
-//	while(codigo_operacion == TRANSFORMACION){
-//		t_list *lista_transformaciones_2do_intento;
-//		for(i = 0; i < list_size(lista_transformaciones_2do_intento); i++){
-//			t_transformacion * transformacion = list_get(lista_transformaciones_2do_intento, i);
-//			// itera sobre las transformaciones que yama volvio a solicitar
-//			crear_hilo_transformador(transformacion, respuesta_transformacion_2do_intento->job_id);
-//		}
-//		// Se asigna el resultado a codigo operacion
-//		codigo_operacion = 0; // TODO: Cambiar valor
-//	}
-//
-
-
-	// REDUCCION LOCAL
-//	int status_reduccion;
-//	respuesta_yama_reduccion * paquete_reduccion = malloc(
-//			sizeof(respuesta_yama_reduccion));
-//	do {
-//		status_reduccion = reduccion_local_res_recv(&yama_socket,
-//				paquete_reduccion);
-//
-//		// Genero un hilo que atienda la respuesta yama
-//		int s;
-//		pthread_attr_t attr;
-//		s = pthread_attr_init(&attr);
-//		void* res;
-//
-//		s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_reduccion,
-//				buffer);
-//		if (s != 0) {
-//
-//		}
-//		s = pthread_attr_destroy(&attr);
-//		if (s != 0) {
-//
-//		}
-//		s = pthread_join(buffer->thread_id, res);
-//		if (s != 0) {
-//
-//		}
-//
-//	} while (status_reduccion != -1);
 
 	return EXIT_SUCCESS;
 }
