@@ -26,33 +26,50 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
-	t_yama_transformaciones_resp * respuesta_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
+	t_yama_planificacion_resp * respuesta_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 
 	// RECV LOOP
-	int i;
-	for(i = 0; i < list_size(respuesta_transformacion->transformaciones); i++) {
+	while(respuesta_transformacion->exec_code == EXITO && (respuesta_transformacion->etapa == TRANSFORMACION || respuesta_transformacion->etapa == REPLANIFICACION)) {
+		int i;
+		for(i = 0; i < list_size(respuesta_transformacion->planificados); i++) {
 
-		t_transformacion * transformacion = list_get(respuesta_transformacion->transformaciones, i);
-		crear_hilo_transformador(transformacion, respuesta_transformacion->job_id);
+			t_transformacion * transformacion = (t_transformacion *) list_get(respuesta_transformacion->planificados, i);
+			crear_hilo_transformador(transformacion, respuesta_transformacion->job_id);
+		}
+		free(respuesta_transformacion);
+		respuesta_transformacion = yama_resp_planificacion(yama_socket, logger);
+	}
+	if(respuesta_transformacion->exec_code == ERROR) { //TODO: MANEJO DE ERRORES
+		printf("Hubo un error");
+		exit(0);
+	} else if(respuesta_transformacion->etapa == REDUCCION_LOCAL) {
+
+		t_yama_planificacion_resp * respuesta_reduccion = respuesta_transformacion;
+		while(respuesta_reduccion->exec_code == EXITO && respuesta_reduccion->etapa == REDUCCION_LOCAL) {
+			int i;
+			for(i = 0; i < list_size(respuesta_reduccion->planificados); i++) {
+
+			}
+		}
 	}
 
 	// SE ATIENDEN POSIBLES ERRORES DE LAS TRANSFORMACIONES
 	// Se recibe el resultado de las transformaciones
-	t_yama_transformaciones_resp * respuesta_transformacion_2do_intento;
-	// Se asigna el resultado a codigo_operacion
-	int codigo_operacion = respuesta_transformacion_2do_intento->exec_code;
-
-	while(codigo_operacion == TRANSFORMACION){
-		t_list *lista_transformaciones_2do_intento;
-		for(i = 0; i < list_size(lista_transformaciones_2do_intento); i++){
-			t_transformacion * transformacion = list_get(lista_transformaciones_2do_intento, i);
-			// itera sobre las transformaciones que yama volvio a solicitar
-			crear_hilo_transformador(transformacion, respuesta_transformacion_2do_intento->job_id);
-		}
-		// Se asigna el resultado a codigo operacion
-		codigo_operacion = 0; // TODO: Cambiar valor
-	}
-
+//	t_yama_planificacion_resp * respuesta_transformacion_2do_intento;
+//	// Se asigna el resultado a codigo_operacion
+//	int codigo_operacion = respuesta_transformacion_2do_intento->exec_code;
+//
+//	while(codigo_operacion == TRANSFORMACION){
+//		t_list *lista_transformaciones_2do_intento;
+//		for(i = 0; i < list_size(lista_transformaciones_2do_intento); i++){
+//			t_transformacion * transformacion = list_get(lista_transformaciones_2do_intento, i);
+//			// itera sobre las transformaciones que yama volvio a solicitar
+//			crear_hilo_transformador(transformacion, respuesta_transformacion_2do_intento->job_id);
+//		}
+//		// Se asigna el resultado a codigo operacion
+//		codigo_operacion = 0; // TODO: Cambiar valor
+//	}
+//
 
 
 	// REDUCCION LOCAL
