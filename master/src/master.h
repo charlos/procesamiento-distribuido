@@ -16,6 +16,7 @@
 #include <commons/collections/list.h>
 #include <shared-library/master-prot.h>
 #include <shared-library/worker-prot.h>
+#include <shared-library/yama-prot.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 
@@ -54,5 +55,7 @@ struct_file * read_file(char * path);
 void atender_respuesta_transform(respuesta_yama_transform * resp);
 int atender_respuesta_reduccion(void * resp);
 pedido_master * crear_pedido_yama(char ** argv);
+void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta);
+void liberar_combo_ip(ip_port_combo *combo);
 
 #endif /* MASTER_H_ */

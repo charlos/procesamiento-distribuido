@@ -26,19 +26,28 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
-	t_list * lista_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige);
+	t_yama_transformaciones_resp * respuesta_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 
 	// RECV LOOP
-//	int * operation_code;
-//	respuesta_yama_transform * buffer;
-//	int status = 1;
 	int i;
-	for(i = 0; i < list_size(lista_transformacion); i++) {
+	for(i = 0; i < list_size(respuesta_transformacion->transformaciones); i++) {
 		int s;
+		pthread_t hilo_solicitud;
 		pthread_attr_t attr;
-		respuesta_yama_transform * pedido_transformacion_worker = list_get(lista_transformacion, i);
+		pthread_attr_init(&attr);
+		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-		s = pthread_create(&pedido_transformacion_worker->thread_id, &attr, &atender_respuesta_transform, pedido_transformacion_worker);
+		t_transformacion * transformacion = list_get(respuesta_transformacion->transformaciones, i);
+
+		respuesta_yama_transform *paquete = malloc(sizeof(respuesta_yama_transform));
+		paquete->archivo_temporal = transformacion->archivo_temporal;
+		paquete->bloque = transformacion->bloque;
+		paquete->bytes_ocupados = transformacion->bytes_ocupados;
+		paquete->ip_port = transformacion->ip_port;
+		paquete->nodo = transformacion->nodo;
+		paquete->job = respuesta_transformacion->job_id;
+		free(transformacion);
+		pthread_create(&hilo_solicitud, &attr, &atender_respuesta_transform, paquete);
 		pthread_attr_destroy(&attr);
 	}
 
@@ -77,9 +86,6 @@ int main(int argc, char ** argv) {
 //
 //	} while (status_reduccion != -1);
 
-	char* hora = temporal_get_string_time();
-	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
-	//connect_send(hora);
 	return EXIT_SUCCESS;
 }
 master_cfg * crear_config() {
@@ -110,17 +116,14 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 			respuesta->bytes_ocupados, respuesta->archivo_temporal,
 			transformador_file->filesize, transformador_file->file, logger);
 
-	int * result = malloc(sizeof(int));
+	resultado_transformacion * result = malloc(sizeof(resultado_transformacion));
 	int status = transform_res_recv(&socket_worker, result);
 
-	resultado_transformacion * resultado = malloc(sizeof(resultado_transformacion));
-	resultado->resultado = *result;
-	resultado->job = respuesta->job;
 
-	yama_resultado_transf_bloque(yama_socket, resultado->job, &respuesta->nodo, resultado->resultado, logger);
+	yama_resultado_transf_bloque(yama_socket, respuesta->job, &respuesta->nodo, respuesta->bloque, result->resultado, logger);
 //	status = yama_transform_res_send(&yama_socket, resultado);
-	free(respuesta);
-	free(combo);
+	liberar_respuesta_transformacion(respuesta);
+	liberar_combo_ip(combo);
 	free(result);
 }
 int atender_respuesta_reduccion(void * resp) {
@@ -129,7 +132,7 @@ int atender_respuesta_reduccion(void * resp) {
 struct_file * read_file(char * path) {
 	FILE * file;
 	struct stat st;
-	string_trim(&path);
+//	string_trim(&path);
 	file = fopen(path, "r");
 
 	if (file) {
@@ -144,4 +147,17 @@ struct_file * read_file(char * path) {
 
 	}
 	return NULL;
+}
+
+void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta){
+	free(respuesta->archivo_temporal);
+	free(respuesta->ip_port);
+	free(respuesta->nodo);
+	free(respuesta);
+}
+
+void liberar_combo_ip(ip_port_combo *combo){
+	free(combo->ip);
+	free(combo->port);
+	free(combo);
 }

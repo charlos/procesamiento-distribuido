@@ -15,7 +15,7 @@
 
 typedef struct {
 	pthread_t thread_id;
-	int nodo;
+	char * nodo;
 	int job;
 	char * ip_port;
 	int bloque;
