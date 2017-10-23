@@ -28,7 +28,7 @@ void agregar_transformaciones(void * response, int * memcpy_pos, t_list * transf
 	memcpy(response + (* memcpy_pos), &(transformaciones->elements_count), resp_prot_cant_elem);
 	(* memcpy_pos) += resp_prot_cant_elem;
 
-	int i;
+	int i = 0;
 	int length;
 	t_transformacion * trans;
 
@@ -61,6 +61,7 @@ void agregar_transformaciones(void * response, int * memcpy_pos, t_list * transf
 
 		memcpy(response + (* memcpy_pos), (trans->archivo_temporal), length);
 		(* memcpy_pos) += length;
+		i++;
 	}
 }
 
@@ -259,7 +260,7 @@ void yama_nueva_solicitud_send_resp(int * socket_cliente, int cod_resp, int job_
 		int memcpy_pos = resp_prot_cod;
 		memcpy(response + memcpy_pos, &job_id, resp_prot_job_id);
 		memcpy_pos += resp_prot_job_id;
-		agregar_transformaciones(response, &memcpy, transformaciones);
+		agregar_transformaciones(response, &memcpy_pos, transformaciones);
 	}
 
 	socket_write(socket_cliente, response, resp_size);
