@@ -25,6 +25,8 @@
 #define	SOCKET_BACKLOG 			100
 #define BLOCK_SIZE 			1048576
 
+#define PATH   "/tmp/yama/"
+
 typedef struct{
 	char* filesystem_ip;
 	u_int32_t filesystem_port;
@@ -36,5 +38,6 @@ typedef struct{
 
 void load_properties(void);
 void create_script_file(char *script_filename, int script_size, void* script );
+size_t merge_two_files(FILE* file1, FILE* file2, char* result);
 
 #endif /* WORKER_H_ */

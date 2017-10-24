@@ -26,7 +26,10 @@ int main(void) {
 	void* buffer;
 	int buffer_size;
 	uint8_t task_code;
-	char* script_filename = string_duplicate("/tmp/script/script.sh");
+	char* script_filename = string_new();
+	string_append(&script_filename,PATH);
+	string_append(&script_filename,"script.sh");
+
 	char* instruccion = string_new();
 
 	//Crear log
@@ -77,12 +80,13 @@ int main(void) {
 
 				t_request_local_reduction* pedido = local_reduction_req_recv(new_socket, logger);
 				char** temp_files = string_split(pedido->temp_files, " ");
+				merge_temp_files(temp_files, pedido->result_file);
 				//free(pedido);
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
 			case STORAGE_OC:
-			case REQUEST_TEMP_FILE:
+			//case REQUEST_TEMP_FILE:
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
