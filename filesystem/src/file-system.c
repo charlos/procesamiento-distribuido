@@ -1,6 +1,5 @@
 #include <commons/bitarray.h>
 #include <commons/config.h>
-#include <commons/config.h>
 #include <commons/log.h>
 #include <dirent.h>
 #include <errno.h>
@@ -80,16 +79,17 @@ int rw_lock_unlock(pthread_rwlock_t *, int, int);
 int rename_file(int, char *, char *);
 int rename_dir(int, char *);
 int make_dir(int, char *);
-int load_bitmap_node(int *, bool, char *, int);
+int load_bitmap_node(int *, bool, char *, char *, int);
 int get_released_size(t_list *, char *);
 int get_line_length(char *, int, int);
 int get_dir_index_from_table(char *, int, int, t_list *);
 int get_dir_index(char *, int, t_list *);
 int get_datanode_fd(char *);
 int cpy_to_local_dir(char *, char *, char *);
-int connect_node(int *, char *, int);
+int connect_node(int *, char *, char *, int);
 int assign_node_block(char *);
 int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
+char * get_datanode_ip_port(char * node_name);
 char * assign_node(char *);
 bool is_number(char *);
 bool in_ignore_list(int, t_list *);
@@ -126,7 +126,7 @@ int main(int argc, char * argv[]) {
 			// handshake
 			hs_req = fs_handshake_recv_req(new_client, logger);
 			if (hs_req->type == DATANODE) {
-				hs_result = connect_node(new_client, hs_req->node_name, hs_req->blocks);
+				hs_result = connect_node(new_client, hs_req->node_name, hs_req->node_ip_port, hs_req->blocks);
 				fs_handshake_send_resp(new_client, hs_result);
 				if (hs_result != SUCCESS) {
 					close_client(* new_client);
@@ -351,7 +351,7 @@ void process_request(int * client_socket) {
 /**
  * @NAME connect_node
  */
-int connect_node(int * client_socket, char * node_name, int blocks) {
+int connect_node(int * client_socket, char * node_name, char * node_ip_port, int blocks) {
 
 	pthread_mutex_lock(&nodes_table_m_lock);
 	char ** nodes = config_get_array_value(nodes_table, "NODOS");
@@ -371,7 +371,7 @@ int connect_node(int * client_socket, char * node_name, int blocks) {
 		add_node(nodes_table_list, node_name, blocks);
 		create_bitmap_for_node(node_name, blocks);
 	}
-	int exec = load_bitmap_node(client_socket, !exits, node_name, blocks);
+	int exec = load_bitmap_node(client_socket, !exits, node_name, node_ip_port, blocks);
 	if (exec == SUCCESS)
 		check_fs_status();
 	pthread_mutex_unlock(&nodes_table_m_lock);
@@ -458,7 +458,7 @@ void create_bitmap_for_node(char * new_node_name, int blocks) {
 /**
  * @NAME load_bitmap_node
  */
-int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, int blocks) {
+int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, char * node_ip_port, int blocks) {
 
 	t_fs_node * node;
 	bool loaded = false;
@@ -487,6 +487,7 @@ int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, int blo
 
 	node = (t_fs_node *) malloc(sizeof(t_fs_node));
 	node->node_name = string_duplicate(node_name);
+	node->ip_port = string_duplicate(node_ip_port);
 	node->bitmap = bitmap;
 	node->size = blocks;
 	node->fd = * node_fd;
@@ -741,7 +742,7 @@ void get_metadata_file(int * client_socket) {
 	md_file->block_list = list_create();
 
 	t_fs_file_block_metadata * block_md;
-	t_fs_block_copy * copy_md;
+	t_fs_copy_block * copy_md;
 	int block = 0;
 	int cpy;
 	int keys_amount = config_keys_amount(md_file_cfg);
@@ -765,8 +766,9 @@ void get_metadata_file(int * client_socket) {
 			if (config_has_property(md_file, cpy_key)) {
 				data = config_get_array_value(md_file_cfg, cpy_key);
 				if (get_datanode_fd(data[0]) != DISCONNECTED_NODE) {
-					copy_md = (t_fs_block_copy *) malloc(sizeof(t_fs_block_copy));
+					copy_md = (t_fs_copy_block *) malloc(sizeof(t_fs_copy_block));
 					strcpy(&(copy_md->node), data[0]);
+					strcpy(&(copy_md->ip_port), get_datanode_ip_port(data[0]));
 					copy_md->node_block = atoi(data[1]);
 					list_add((block_md->copies_list), copy_md);
 				}
@@ -810,6 +812,22 @@ void get_metadata_file(int * client_socket) {
  */
 void closure(void * node) {
 	free(node);
+}
+
+/**
+ * @NAME get_datanode_ip_port
+ */
+char * get_datanode_ip_port(char * node_name) {
+	t_fs_node * node;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node_name, (node->node_name)) == 0) {
+			return node->ip_port;
+		}
+		index++;
+	}
+	return DISCONNECTED_NODE;
 }
 
 
@@ -2460,7 +2478,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 
 
 //	╔══════════════════════════════════════════════════════════════╗
-//	║ COMMAND: INFO                                                  ║
+//	║ COMMAND: INFO                                                ║
 //	╚══════════════════════════════════════════════════════════════╝
 
 /**

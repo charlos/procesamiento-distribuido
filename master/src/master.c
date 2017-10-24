@@ -26,60 +26,35 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
-	t_list * lista_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige);
+	t_yama_planificacion_resp * respuesta_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 
 	// RECV LOOP
-//	int * operation_code;
-//	respuesta_yama_transform * buffer;
-//	int status = 1;
-	int i;
-	for(i = 0; i < list_size(lista_transformacion); i++) {
-		int s;
-		pthread_attr_t attr;
-		respuesta_yama_transform * pedido_transformacion_worker = list_get(lista_transformacion, i);
+	while(respuesta_transformacion->exec_code == EXITO && (respuesta_transformacion->etapa == TRANSFORMACION || respuesta_transformacion->etapa == REPLANIFICACION)) {
+		int i;
+		for(i = 0; i < list_size(respuesta_transformacion->planificados); i++) {
 
-		s = pthread_create(&pedido_transformacion_worker->thread_id, &attr, &atender_respuesta_transform, pedido_transformacion_worker);
-		pthread_attr_destroy(&attr);
+			t_transformacion * transformacion = (t_transformacion *) list_get(respuesta_transformacion->planificados, i);
+			crear_hilo_transformador(transformacion, respuesta_transformacion->job_id);
+		}
+		free(respuesta_transformacion);
+		respuesta_transformacion = yama_resp_planificacion(yama_socket, logger);
+	}
+	if(respuesta_transformacion->exec_code == ERROR) { //TODO: MANEJO DE ERRORES
+		printf("Hubo un error");
+		exit(0);
+	} else if(respuesta_transformacion->etapa == REDUCCION_LOCAL) {
+
+		t_yama_planificacion_resp * respuesta_reduccion = respuesta_transformacion;
+		while(respuesta_reduccion->exec_code == EXITO && respuesta_reduccion->etapa == REDUCCION_LOCAL) {
+			int i;
+			for(i = 0; i < list_size(respuesta_reduccion->planificados); i++) {
+				// obtener cada t_reduccion_local
+				// crear hilo de reduccion local
+			}
+			// recibir resultado
+		}
 	}
 
-	// ATENDER POSIBLES ERRORES DE LAS TRANSFORMACIONES
-
-
-
-
-	// REDUCCION LOCAL
-//	int status_reduccion;
-//	respuesta_yama_reduccion * paquete_reduccion = malloc(
-//			sizeof(respuesta_yama_reduccion));
-//	do {
-//		status_reduccion = reduccion_local_res_recv(&yama_socket,
-//				paquete_reduccion);
-//
-//		// Genero un hilo que atienda la respuesta yama
-//		int s;
-//		pthread_attr_t attr;
-//		s = pthread_attr_init(&attr);
-//		void* res;
-//
-//		s = pthread_create(&buffer->thread_id, &attr, &atender_respuesta_reduccion,
-//				buffer);
-//		if (s != 0) {
-//
-//		}
-//		s = pthread_attr_destroy(&attr);
-//		if (s != 0) {
-//
-//		}
-//		s = pthread_join(buffer->thread_id, res);
-//		if (s != 0) {
-//
-//		}
-//
-//	} while (status_reduccion != -1);
-
-	char* hora = temporal_get_string_time();
-	printf("Hora actual: %s\n", hora); /* prints !!!Hello World!!! */
-	//connect_send(hora);
 	return EXIT_SUCCESS;
 }
 master_cfg * crear_config() {
@@ -110,17 +85,14 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 			respuesta->bytes_ocupados, respuesta->archivo_temporal,
 			transformador_file->filesize, transformador_file->file, logger);
 
-	int * result = malloc(sizeof(int));
+	resultado_transformacion * result = malloc(sizeof(resultado_transformacion));
 	int status = transform_res_recv(&socket_worker, result);
 
-	resultado_transformacion * resultado = malloc(sizeof(resultado_transformacion));
-	resultado->resultado = *result;
-	resultado->job = respuesta->job;
 
-	yama_resultado_transf_bloque(yama_socket, resultado->job, &respuesta->nodo, resultado->resultado, logger);
+	yama_resultado_transf_bloque(yama_socket, respuesta->job, &respuesta->nodo, respuesta->bloque, result->resultado, logger);
 //	status = yama_transform_res_send(&yama_socket, resultado);
-	free(respuesta);
-	free(combo);
+	liberar_respuesta_transformacion(respuesta);
+	liberar_combo_ip(combo);
 	free(result);
 }
 int atender_respuesta_reduccion(void * resp) {
@@ -129,7 +101,8 @@ int atender_respuesta_reduccion(void * resp) {
 struct_file * read_file(char * path) {
 	FILE * file;
 	struct stat st;
-	string_trim(&path);
+	// este trim nose porque rompe
+//	string_trim(&path);
 	file = fopen(path, "r");
 
 	if (file) {
@@ -144,4 +117,41 @@ struct_file * read_file(char * path) {
 
 	}
 	return NULL;
+}
+
+void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta){
+	free(respuesta->archivo_temporal);
+	free(respuesta->ip_port);
+	free(respuesta->nodo);
+	free(respuesta);
+}
+
+void liberar_combo_ip(ip_port_combo *combo){
+	free(combo->ip);
+	free(combo->port);
+	free(combo);
+}
+
+void crear_hilo_transformador(t_transformacion *transformacion, int job_id){
+	pthread_t hilo_solicitud;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+	respuesta_yama_transform *transformacion_master = crear_transformacion_master(transformacion);
+	transformacion_master->job = job_id;
+	free(transformacion);
+	pthread_create(&hilo_solicitud, &attr, &atender_respuesta_transform, transformacion_master);
+	pthread_attr_destroy(&attr);
+}
+
+respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
+	respuesta_yama_transform *transformacion_master = malloc(sizeof(respuesta_yama_transform));
+	transformacion_master->archivo_temporal = transformacion_yama->archivo_temporal;
+	transformacion_master->bloque = transformacion_yama->bloque;
+	transformacion_master->bytes_ocupados = transformacion_yama->bytes_ocupados;
+	transformacion_master->ip_port = transformacion_yama->ip_port;
+	transformacion_master->nodo = transformacion_yama->nodo;
+
+	return transformacion_master;
 }

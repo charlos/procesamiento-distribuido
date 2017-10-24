@@ -52,6 +52,7 @@ void load_dn_properties(char * cfg_path) {
 	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = config_get_string_value(conf, "NOMBRE_NODO");
+	dn_conf->ip = config_get_string_value(conf, "IP_DATANODE");
 	dn_conf->port = config_get_string_value(conf, "PUERTO_DATANODE");
 	dn_conf->fs_ip = config_get_string_value(conf, "IP_FILESYSTEM");
 	dn_conf->fs_port = config_get_string_value(conf, "PUERTO_FILESYSTEM");
@@ -79,11 +80,18 @@ void init(void) {
 	int file_size = sb.st_size;
 	int blocks = (file_size / BLOCK_SIZE);
 	fs_socket = connect_to_socket((dn_conf->fs_ip), (dn_conf->fs_port));
-	if ((fs_handshake(fs_socket, DATANODE, (dn_conf->node_name), blocks, logger)) != SUCCESS) {
+
+	char * ip_port = string_new();
+	string_append(&ip_port, (dn_conf->ip));
+	string_append(&ip_port, ":");
+	string_append(&ip_port, (dn_conf->port));
+
+	if ((fs_handshake(fs_socket, DATANODE, (dn_conf->node_name), ip_port, blocks, logger)) != SUCCESS) {
 		// TODO: error handler
 		// fs handshake error
 		exit(EXIT_FAILURE);
 	}
+	free(ip_port);
 	data_bin_mf_ptr = map_file(dn_conf->data_bin_path, O_RDWR);
 }
 

@@ -12,6 +12,7 @@
 
 typedef struct {
 	char * node_name;
+	char * ip;
 	char * port;
 	char * fs_ip;
 	char * fs_port;
