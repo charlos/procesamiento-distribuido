@@ -8,8 +8,9 @@
 #include "worker.h"
 
 extern t_worker_conf* worker_conf;
-extern FILE *fptr;
+//extern FILE *fptr;
 extern t_log* logger;
+extern void * data_bin_mf_ptr;
 
 void load_properties(void) {
 	t_config * conf = config_create("./nodo.cfg");
@@ -25,7 +26,7 @@ void load_properties(void) {
 
 void create_script_file(char *script_filename, int script_size, void* script ){
 	void* buffer;
-	fptr = fopen(script_filename, O_RDWR | O_CREAT | O_SYNC);
+	FILE* fptr = fopen(script_filename, O_RDWR | O_CREAT | O_SYNC);
 	buffer = malloc(script_size);
 	memcpy(buffer,script,script_size);
 	fputs(buffer,fptr);
@@ -42,7 +43,7 @@ int merge_temp_files(char** temp_files, char* result_file){
 	fclose(file_aux);
 	file_aux = fopen(path_file_aux, "r+");
 	FILE *file_temp;
-	char* result;
+	char* result = string_new();
 	char* path_file_temp = string_new();
 	size_t lenght_result=0;
 	int i = 0;
@@ -97,3 +98,82 @@ size_t merge_two_files(FILE* file1, FILE* file2, char* result){
 	}
 	return lenght_result;
 }
+
+
+void processRequestFromMaster(uint8_t task_code, void* pedido){
+	void* buffer;
+	int buffer_size;
+	char* script_filename = string_new();
+	string_append(&script_filename,PATH);
+	string_append(&script_filename,"script.sh");
+
+	char* instruccion = string_new();
+		switch (task_code) {
+			case TRANSFORM_OC:{
+				t_request_transformation* request = (t_request_transformation*)pedido;
+				if (request->exec_code == SUCCESS){
+					//Creo el archivo y guardo el script a ejecutar
+					create_script_file(script_filename, request->script_size, request->script );
+
+					buffer_size = request->used_size;
+					//Leer el archivo data.bin y obtener el bloque pedido
+					buffer = malloc(buffer_size);
+					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (request->block)), buffer_size);
+
+					//compongo instrucción a ejecutar: script de trasnformacion + ordenar + guardar en archivo temp
+					string_append(&instruccion, script_filename);
+					string_append(&instruccion, "|sort > ");
+					string_append(&instruccion, PATH);
+					string_append(&instruccion, request->result_file);
+
+					FILE* input = popen (instruccion, "w");
+					if (!input){
+						log_error(logger, "WORKER - Transformación - Error al ejecutar");
+					    //return -1;
+					}
+					fwrite(buffer, sizeof(char), buffer_size, input);
+					pclose(input);
+					log_trace(logger, "WORKER - Transformación realizada");
+
+				}
+				break;
+			}
+			case REDUCE_LOCALLY_OC:{
+
+				t_request_local_reduction* request = (t_request_local_reduction*) pedido;
+
+				//Creo el archivo y guardo el script a ejecutar
+				create_script_file(script_filename, request->script_size, request->script );
+
+				char** temp_files = string_split(request->temp_files, " ");
+				merge_temp_files(temp_files, request->result_file);
+
+				//compongo instrucción a ejecutar: script de reducción + ordenar + guardar en archivo temp
+				string_append(&instruccion, script_filename);
+				string_append(&instruccion, "|sort > ");
+				string_append(&instruccion, PATH);
+				string_append(&instruccion, request->result_file);
+
+				FILE* input = popen (instruccion, "w");
+				if (!input){
+					log_error(logger, "WORKER - Reducción Local - Error al ejecutar");
+				    //return -1;
+				}
+				//TODO copiar el archivo que contiene el apareo en el pipe input
+				pclose(input);
+				log_trace(logger, "WORKER - Transformación realizada");
+
+
+				//free(pedido);
+				break;
+			}
+			case REDUCE_GLOBAL_OC:
+			case STORAGE_OC:
+			//case REQUEST_TEMP_FILE:
+			default:
+				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
+				break;
+		}
+
+}
+

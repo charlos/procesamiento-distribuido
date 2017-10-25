@@ -39,5 +39,6 @@ typedef struct{
 void load_properties(void);
 void create_script_file(char *script_filename, int script_size, void* script );
 size_t merge_two_files(FILE* file1, FILE* file2, char* result);
+void processRequestFromMaster(uint8_t task_code, void* pedido);
 
 #endif /* WORKER_H_ */
