@@ -14,13 +14,15 @@ typedef struct {
 
 typedef struct {
 	uint32_t job_id;
+	uint8_t etapa;
 	char * nodo;
+	char * ip_port;
 	uint32_t bloque;
 	uint32_t bytes_ocupados;
+	uint8_t estado;
+	char * archivo_temp;
+	char * archivo_rl_temp;
 	t_list * copias;
-	int8_t etapa;
-	char * archivo_temporal;
-	int8_t estado;
 } t_yama_estado_bloque;
 
 typedef struct {
