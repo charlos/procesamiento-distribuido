@@ -26,25 +26,26 @@ int main(int argc, char ** argv) {
 			master_config->port_yama);
 
 	// Enviar Pedido a YAMA
-	t_yama_planificacion_resp * respuesta_transformacion = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
+	t_yama_planificacion_resp * respuesta_solicitud = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 
 	// RECV LOOP
-	while(respuesta_transformacion->exec_code == EXITO && (respuesta_transformacion->etapa == TRANSFORMACION || respuesta_transformacion->etapa == REPLANIFICACION)) {
-		int i;
-		for(i = 0; i < list_size(respuesta_transformacion->planificados); i++) {
+	while(respuesta_solicitud->exec_code != ERROR && respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO) {
+		atender_solicitud(respuesta_solicitud);
 
-			t_transformacion * transformacion = (t_transformacion *) list_get(respuesta_transformacion->planificados, i);
-			crear_hilo_transformador(transformacion, respuesta_transformacion->job_id);
-		}
-		free(respuesta_transformacion);
-		respuesta_transformacion = yama_resp_planificacion(yama_socket, logger);
+		respuesta_solicitud = yama_resp_planificacion(yama_socket, logger);
 	}
-	if(respuesta_transformacion->exec_code == ERROR) { //TODO: MANEJO DE ERRORES
+
+	/*
+	 * 		|																				|
+	 * 		|	Esto va a volar, lo dejo para reutilizar en atender solicitud	(mas abajo)	|
+	 * 		v																				v
+	 */
+	if(respuesta_solicitud->exec_code == ERROR) { //TODO: MANEJO DE ERRORES
 		printf("Hubo un error");
 		exit(0);
-	} else if(respuesta_transformacion->etapa == REDUCCION_LOCAL) {
+	} else if(respuesta_solicitud->etapa == REDUCCION_LOCAL) {
 
-		t_yama_planificacion_resp * respuesta_reduccion = respuesta_transformacion;
+		t_yama_planificacion_resp * respuesta_reduccion = respuesta_solicitud;
 		while(respuesta_reduccion->exec_code == EXITO && respuesta_reduccion->etapa == REDUCCION_LOCAL) {
 			int i;
 			for(i = 0; i < list_size(respuesta_reduccion->planificados); i++) {
@@ -154,4 +155,25 @@ respuesta_yama_transform *crear_transformacion_master(t_transformacion *transfor
 	transformacion_master->nodo = transformacion_yama->nodo;
 
 	return transformacion_master;
+}
+
+void atender_solicitud(t_yama_planificacion_resp *solicitud){
+	int i;
+	switch(solicitud->etapa){
+	case TRANSFORMACION:
+
+		for(i = 0; i < list_size(solicitud->planificados); i++) {
+
+			t_transformacion * transformacion = (t_transformacion *) list_get(solicitud->planificados, i);
+			crear_hilo_transformador(transformacion, solicitud->job_id);
+		}
+		break;
+	case REPLANIFICACION:
+	case REDUCCION_LOCAL:
+	case REDUCCION_GLOBAL:
+	default:
+		// Todavia nose
+	}
+	// cada hilo tiene que liberar los atributos internos de su solicitud
+	free(solicitud);
 }
