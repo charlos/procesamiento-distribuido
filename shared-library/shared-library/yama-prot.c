@@ -2,8 +2,355 @@
 #include "socket.h"
 
 void closure_tt(t_transformacion *);
+void closure_rl(t_red_local *);
 void agregar_transformaciones(void *, int, t_list *);
+void agregar_reducciones_locales(void *, int, t_list *);
+int recv_reducciones_locales(int, t_list *, t_log *);
 int recv_transformaciones(int, t_list *, t_log *);
+
+
+/**	╔════════════════════════╗
+	║ RECEIVE OPERATION CODE ║
+	╚════════════════════════╝ **/
+
+int yama_recv_cod_operacion(int * socket_cliente, t_log * log) {
+	uint8_t prot_cod_operacion = 1;
+	uint8_t cod_operacion;
+	int bytes_recv = socket_recv(socket_cliente, &cod_operacion, prot_cod_operacion);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		return CLIENTE_DESCONECTADO;
+	}
+	return cod_operacion;
+}
+
+
+/**	╔═════════════════╗
+	║ NUEVA SOLICITUD ║
+	╚═════════════════╝ **/
+
+t_yama_planificacion_resp * yama_nueva_solicitud(int socket_servidor, char * archivo, t_log * log) {
+
+	/**	╔════════════════════════╦════════════════════════╦═══════════════════╗
+	    ║ cod operacion (1 byte) ║ archivo size (4 bytes) ║ nombre de archivo ║
+	    ╚════════════════════════╩════════════════════════╩═══════════════════╝ **/
+
+	uint8_t prot_cod_operacion = 1;
+	uint8_t prot_archivo_size = 4;
+
+	uint8_t  req_cod_operacion = NUEVA_SOLICITUD;
+	uint32_t req_archivo_size = strlen(archivo) + 1;
+
+	int msg_size = sizeof(char) * (prot_cod_operacion + prot_archivo_size + req_archivo_size);
+	void * request = malloc(msg_size);
+	memcpy(request, &req_cod_operacion, prot_cod_operacion);
+	memcpy(request + prot_cod_operacion, &req_archivo_size, prot_archivo_size);
+	memcpy(request + prot_cod_operacion + prot_archivo_size, archivo, req_archivo_size);
+	socket_send(&socket_servidor, request, msg_size, 0);
+	free(request);
+
+	return yama_resp_planificacion(socket_servidor, log);
+
+}
+
+t_yama_nueva_solicitud_req * yama_nueva_solicitud_recv_req(int * socket_cliente, t_log * log) {
+	t_yama_nueva_solicitud_req * request = malloc(sizeof(t_yama_nueva_solicitud_req));
+	uint8_t prot_archivo_size = 4;
+	int archivo_size;
+	int bytes_recv = socket_recv(socket_cliente, &archivo_size, prot_archivo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+	request->archivo = malloc(sizeof(char) * archivo_size);
+	bytes_recv = socket_recv(socket_cliente, (request->archivo), archivo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		free(request->archivo);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+	request->exec_code = EXITO;
+	return request;
+}
+
+
+/**	╔══════════════════════════════════════════════╗
+	║ REGISTRAR RESULTADO TRANSFORMACION DE BLOQUE ║
+	╚══════════════════════════════════════════════╝ **/
+
+void yama_registrar_resultado_transf_bloque(int socket_servidor, int job_id, char * nodo, int bloque, int cod_resultado_t, t_log * log) {
+
+	/**	╔════════════════════════╦══════════════════╦═════════════════════╦══════╦══════════════════╦═══════════════════════════════╗
+		║ cod operacion (1 byte) ║ job id (4 bytes) ║ nodo size (4 bytes) ║ nodo ║ bloque (4 bytes) ║ cod resultado transf (1 byte) ║
+		╚════════════════════════╩══════════════════╩═════════════════════╩══════╩══════════════════╩═══════════════════════════════╝ **/
+
+	uint8_t prot_cod_operacion = 1;
+	uint8_t prot_job_id = 4;
+	uint8_t prot_nodo_size = 4;
+	uint8_t prot_bloque = 4;
+	uint8_t prot_cod_resultado_t = 1;
+
+	uint8_t req_cod_operacion = REGISTRAR_RES_TRANSF_BLOQUE;
+	uint32_t req_job_id = job_id;
+	uint32_t req_nodo_size = strlen(nodo) + 1;
+	uint32_t req_bloque = bloque;
+	int8_t req_resultado_t = cod_resultado_t;
+
+	int msg_size = sizeof(char) * (prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_bloque + prot_cod_resultado_t);
+	void * request = malloc(msg_size);
+	memcpy(request, &req_cod_operacion, prot_cod_operacion);
+	memcpy(request + prot_cod_operacion, &req_job_id, prot_job_id);
+	memcpy(request + prot_cod_operacion + prot_job_id, &req_nodo_size, prot_nodo_size);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size, nodo, req_nodo_size);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size, &req_bloque, prot_bloque);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_bloque, &req_resultado_t, prot_cod_resultado_t);
+	socket_send(&socket_servidor, request, msg_size, 0);
+	free(request);
+
+}
+
+t_yama_reg_resultado_t_req * yama_registrar_resultado_t_recv_req(int * socket_cliente, t_log * log) {
+
+	t_yama_reg_resultado_t_req * request = malloc(sizeof(t_yama_reg_resultado_t_req));
+
+	uint8_t prot_job_id = 4;
+	int bytes_recv = socket_recv(socket_cliente, &(request->job_id), prot_job_id);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	uint8_t prot_nodo_size = 4;
+	int nodo_size;
+	bytes_recv = socket_recv(socket_cliente, &nodo_size, prot_nodo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+	request->nodo = malloc(sizeof(char) * nodo_size);
+	bytes_recv = socket_recv(socket_cliente, (request->nodo), nodo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		free(request->nodo);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	uint8_t prot_bloque = 4;
+	bytes_recv = socket_recv(socket_cliente, &(request->bloque), prot_bloque);
+	if (bytes_recv <= 0) {
+		free(request->nodo);
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	uint8_t prot_cod_resultado_t = 1;
+	bytes_recv = socket_recv(socket_cliente, &(request->resultado_t), prot_cod_resultado_t);
+	if (bytes_recv <= 0) {
+		free(request->nodo);
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	request->exec_code = EXITO;
+	return request;
+}
+
+
+/**	╔═════════════════════════════════════╗
+	║ REGISTRAR RESULTADO REDUCCION LOCAL ║
+	╚═════════════════════════════════════╝ **/
+
+void yama_registrar_resultado_reduccion_local(int socket_servidor, int job_id, char * nodo, int cod_resultado_rl, t_log * log) {
+
+	/**	╔════════════════════════╦══════════════════╦═════════════════════╦══════╦═══════════════════════════╗
+		║ cod operacion (1 byte) ║ job id (4 bytes) ║ nodo size (4 bytes) ║ nodo ║ cod resultado rl (1 byte) ║
+		╚════════════════════════╩══════════════════╩═════════════════════╩══════╩═══════════════════════════╝ **/
+
+	uint8_t prot_cod_operacion = 1;
+	uint8_t prot_job_id = 4;
+	uint8_t prot_nodo_size = 4;
+	uint8_t prot_cod_resultado_rl = 1;
+
+	uint8_t req_cod_operacion = REGISTRAR_RES_REDUCCION_LOCAL;
+	uint32_t req_job_id = job_id;
+	uint32_t req_nodo_size = strlen(nodo) + 1;
+	int8_t req_resultado_rl = cod_resultado_rl;
+
+	int msg_size = sizeof(char) * (prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_cod_resultado_rl);
+	void * request = malloc(msg_size);
+	memcpy(request, &req_cod_operacion, prot_cod_operacion);
+	memcpy(request + prot_cod_operacion, &req_job_id, prot_job_id);
+	memcpy(request + prot_cod_operacion + prot_job_id, &req_nodo_size, prot_nodo_size);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size, nodo, req_nodo_size);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size, &req_resultado_rl, prot_cod_resultado_rl);
+	socket_send(&socket_servidor, request, msg_size, 0);
+	free(request);
+
+}
+
+t_yama_reg_resultado_rl_req * yama_registrar_resultado_rl_recv_req(int * socket_cliente, t_log * log) {
+
+	t_yama_reg_resultado_rl_req * request = malloc(sizeof(t_yama_reg_resultado_rl_req));
+
+	uint8_t prot_job_id = 4;
+	int bytes_recv = socket_recv(socket_cliente, &(request->job_id), prot_job_id);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	uint8_t prot_nodo_size = 4;
+	int nodo_size;
+	bytes_recv = socket_recv(socket_cliente, &nodo_size, prot_nodo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+	request->nodo = malloc(sizeof(char) * nodo_size);
+	bytes_recv = socket_recv(socket_cliente, (request->nodo), nodo_size);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		free(request->nodo);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	uint8_t prot_cod_resultado_rl = 1;
+	bytes_recv = socket_recv(socket_cliente, &(request->resultado_rl), prot_cod_resultado_rl);
+	if (bytes_recv <= 0) {
+		free(request->nodo);
+		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
+		request->exec_code = CLIENTE_DESCONECTADO;
+		return request;
+	}
+
+	request->exec_code = EXITO;
+	return request;
+}
+
+
+/**	╔════════════════════╗
+	║ YAMA PLANIFICACION ║
+	╚════════════════════╝ **/
+
+t_yama_planificacion_resp * yama_resp_planificacion(int socket_servidor, t_log * log) {
+
+	t_yama_planificacion_resp * resp = malloc(sizeof(t_yama_planificacion_resp));
+
+	uint8_t resp_prot_cod = 2;
+	int bytes_recv = socket_recv(&socket_servidor, &(resp->exec_code), resp_prot_cod);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+		resp->exec_code = SERVIDOR_DESCONECTADO;
+		return resp;
+	}
+
+	uint8_t resp_prot_etapa = 1;
+	bytes_recv = socket_recv(&socket_servidor, &(resp->etapa), resp_prot_etapa);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+		resp->exec_code = SERVIDOR_DESCONECTADO;
+		return resp;
+	}
+
+	uint8_t resp_prot_job_id = 4;
+	bytes_recv = socket_recv(&socket_servidor, &(resp->job_id), resp_prot_job_id);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+		resp->exec_code = SERVIDOR_DESCONECTADO;
+		return resp;
+	}
+
+	if ((resp->exec_code) != EXITO)
+		return resp;
+
+	t_list * planificados = list_create();
+
+	if ((resp->etapa) == TRANSFORMACION || (resp->etapa) == REPLANIFICACION) {
+		resp->exec_code = recv_transformaciones(socket_servidor, planificados, log);
+		if ((resp->exec_code) == EXITO) {
+			resp->planificados = planificados;
+		} else {
+			list_destroy_and_destroy_elements(planificados, &closure_tt);
+		}
+	} else if ((resp->etapa) == REDUCCION_LOCAL) {
+		resp->exec_code = recv_reducciones_locales(socket_servidor, planificados, log);
+		if ((resp->exec_code) == EXITO) {
+			resp->planificados = planificados;
+		} else {
+			list_destroy_and_destroy_elements(planificados, &closure_rl);
+		}
+	}
+
+	//
+	// TODO: VER INCLUIR OTRAS ETAPAS
+	//
+
+	return resp;
+}
+
+void yama_planificacion_send_resp(int * socket_cliente, int cod_resp, int etapa, int job_id, t_list * planificados) {
+
+	uint8_t resp_prot_cod = 2;
+	uint8_t resp_prot_etapa = 1;
+	uint8_t resp_prot_job_id = 4;
+
+	int resp_size = (resp_prot_cod + resp_prot_etapa + resp_prot_job_id);
+
+	if (cod_resp == EXITO) {
+		if (etapa == TRANSFORMACION || etapa == REPLANIFICACION) {
+			t_transformacion * trans;
+			int i = 0;
+			while (i < (planificados->elements_count)) {
+				trans = (t_transformacion *) list_get(planificados, i);
+				resp_size += (5 * sizeof(int32_t)) + (strlen(trans->nodo) + 1) + (strlen(trans->ip_port) + 1) + (strlen(trans->archivo_temporal) + 1);
+				i++;
+			}
+		} else if (etapa == REDUCCION_LOCAL) {
+			t_red_local * red_local;
+			int i = 0;
+			while (i < (planificados->elements_count)) {
+				red_local = (t_red_local *) list_get(planificados, i);
+				resp_size += (4 * sizeof(int32_t)) + (strlen(red_local->nodo) + 1) + (strlen(red_local->ip_port) + 1) + (strlen(red_local->archivo_temp) + 1) + (strlen(red_local->archivo_rl_temp) + 1);
+				i++;
+			}
+		}
+	}
+
+	int memcpy_pos;
+	void * response = malloc(resp_size);
+	memcpy(response, &cod_resp, resp_prot_cod);
+	memcpy_pos = resp_prot_cod;
+	memcpy(response + memcpy_pos, &etapa, resp_prot_etapa);
+	memcpy_pos += resp_prot_etapa;
+	memcpy(response + memcpy_pos, &job_id, resp_prot_job_id);
+	memcpy_pos += resp_prot_job_id;
+
+	if (cod_resp == EXITO) {
+
+		if (etapa == TRANSFORMACION || etapa == REPLANIFICACION) {
+			agregar_transformaciones(response, memcpy_pos, planificados);
+		} else if (etapa == REDUCCION_LOCAL) {
+			agregar_reducciones_locales(response, memcpy_pos, planificados);
+		}
+
+		// TODO: VER INCLUIR LAS OTRAS ETAPAS
+
+	}
+
+	socket_write(socket_cliente, response, resp_size);
+	free(response);
+
+}
 
 void agregar_transformaciones(void * response, int memcpy_pos, t_list * transformaciones) {
 
@@ -50,6 +397,7 @@ void agregar_transformaciones(void * response, int memcpy_pos, t_list * transfor
 
 		memcpy(response + memcpy_pos, (trans->archivo_temporal), length);
 		memcpy_pos += length;
+
 		i++;
 	}
 }
@@ -71,7 +419,6 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 	}
 
 	t_transformacion * transf;
-
 	int i;
 	int length;
 
@@ -141,312 +488,152 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 	return EXITO;
 }
 
+void agregar_reducciones_locales(void * response, int memcpy_pos, t_list * reducciones_l) {
 
+	uint8_t resp_prot_cant_elem = 4;
+	uint8_t resp_prot_nodo_size = 4;
+	uint8_t resp_prot_ip_puerto_size = 4;
+	uint8_t resp_prot_arch_temp_size = 4;
+	uint8_t resp_prot_arch_rl_temp_size = 4;
 
-/**	╔════════════════════════╗
-	║ RECEIVE OPERATION CODE ║
-	╚════════════════════════╝ **/
+	memcpy(response + memcpy_pos, &(reducciones_l->elements_count), resp_prot_cant_elem);
+	memcpy_pos += resp_prot_cant_elem;
 
-int yama_recv_cod_operacion(int * socket_cliente, t_log * log) {
-	uint8_t prot_cod_operacion = 1;
-	uint8_t cod_operacion;
-	int bytes_recv = socket_recv(socket_cliente, &cod_operacion, prot_cod_operacion);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		return CLIENTE_DESCONECTADO;
+	int i = 0;
+	int length;
+	t_red_local * red_local;
+
+	while (i < (reducciones_l->elements_count)) {
+		red_local = (t_red_local *) list_get(reducciones_l, i);
+
+		length = (strlen(red_local->nodo) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_nodo_size);
+		memcpy_pos += resp_prot_nodo_size;
+
+		memcpy(response + memcpy_pos, (red_local->nodo), length);
+		memcpy_pos += length;
+
+		length = (strlen(red_local->ip_port) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_ip_puerto_size);
+		memcpy_pos += resp_prot_ip_puerto_size;
+
+		memcpy(response + memcpy_pos, (red_local->ip_port), length);
+		memcpy_pos += length;
+
+		length = (strlen(red_local->archivo_temp) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_arch_temp_size);
+		memcpy_pos += resp_prot_arch_temp_size;
+
+		memcpy(response + memcpy_pos, (red_local->archivo_temp), length);
+		memcpy_pos += length;
+
+		length = (strlen(red_local->archivo_rl_temp) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_arch_rl_temp_size);
+		memcpy_pos += resp_prot_arch_rl_temp_size;
+
+		memcpy(response + memcpy_pos, (red_local->archivo_rl_temp), length);
+		memcpy_pos += length;
+
+		i++;
 	}
-	return cod_operacion;
 }
 
+int recv_reducciones_locales(int socket_servidor, t_list * reducciones, t_log * log) {
 
-/**	╔═════════════════╗
-	║ NUEVA SOLICITUD ║
-	╚═════════════════╝ **/
+	uint8_t resp_prot_cant_elem = 4;
+	uint8_t resp_prot_nodo_size = 4;
+	uint8_t resp_prot_ip_puerto_size = 4;
+	uint8_t resp_prot_arch_temp_size = 4;
+	uint8_t resp_prot_arch_rl_temp_size = 4;
 
-t_yama_planificacion_resp * yama_nueva_solicitud(int socket_servidor, char * archivo, t_log * log) {
-
-	/**	╔════════════════════════╦════════════════════════╦═══════════════════╗
-	    ║ cod operacion (1 byte) ║ archivo size (4 bytes) ║ nombre de archivo ║
-	    ╚════════════════════════╩════════════════════════╩═══════════════════╝ **/
-
-	uint8_t prot_cod_operacion = 1;
-	uint8_t prot_archivo_size = 4;
-
-	uint8_t  req_cod_operacion = NUEVA_SOLICITUD;
-	uint32_t req_archivo_size = strlen(archivo) + 1;
-
-	int msg_size = sizeof(char) * (prot_cod_operacion + prot_archivo_size + req_archivo_size);
-	void * request = malloc(msg_size);
-	memcpy(request, &req_cod_operacion, prot_cod_operacion);
-	memcpy(request + prot_cod_operacion, &req_archivo_size, prot_archivo_size);
-	memcpy(request + prot_cod_operacion + prot_archivo_size, archivo, req_archivo_size);
-	socket_send(&socket_servidor, request, msg_size, 0);
-	free(request);
-
-	t_yama_planificacion_resp * resp = malloc(sizeof(t_yama_planificacion_resp));
-	uint8_t resp_prot_cod = 2;
-	int bytes_recv = socket_recv(&socket_servidor, &(resp->exec_code), resp_prot_cod);
+	int cant_red;
+	int bytes_recv = socket_recv(&socket_servidor, &(cant_red), resp_prot_cant_elem);
 	if (bytes_recv <= 0) {
 		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
-		resp->exec_code = SERVIDOR_DESCONECTADO;
-		return resp;
+		return SERVIDOR_DESCONECTADO;
 	}
 
-	if (resp->exec_code != EXITO)
-		return resp;
-
-	uint8_t resp_prot_etapa = 1;
-	bytes_recv = socket_recv(&socket_servidor, &(resp->etapa), resp_prot_etapa);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
-		resp->exec_code = SERVIDOR_DESCONECTADO;
-		return resp;
-	}
-
-	uint8_t resp_prot_job_id = 4;
-	bytes_recv = socket_recv(&socket_servidor, &(resp->job_id), resp_prot_job_id);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
-		resp->exec_code = SERVIDOR_DESCONECTADO;
-		return resp;
-	}
-
-	t_list * transf_list = list_create();
-	int res = recv_transformaciones(socket_servidor, transf_list, log);
-	if (res == EXITO) {
-		resp->planificados = transf_list;
-	} else {
-		resp->exec_code = res;
-		list_destroy_and_destroy_elements(transf_list, &closure_tt);
-	}
-
-	return resp;
-}
-
-t_yama_nueva_solicitud_req * yama_nueva_solicitud_recv_req(int * socket_cliente, t_log * log) {
-	t_yama_nueva_solicitud_req * request = malloc(sizeof(t_yama_nueva_solicitud_req));
-	uint8_t prot_archivo_size = 4;
-	uint32_t archivo_size;
-	int bytes_recv = socket_recv(socket_cliente, &archivo_size, prot_archivo_size);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	request->archivo = malloc(sizeof(char) * archivo_size);
-	bytes_recv = socket_recv(socket_cliente, (request->archivo), archivo_size);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		free(request->archivo);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	request->exec_code = EXITO;
-	return request;
-}
-
-
-void yama_nueva_solicitud_send_resp(int * socket_cliente, int cod_resp, int etapa, int job_id, t_list * transformaciones) {
-
-	uint8_t resp_prot_cod = 2;
-	uint8_t resp_prot_etapa = 1;
-	uint8_t resp_prot_job_id = 4;
-
+	t_red_local * red_local;
 	int i;
-	t_transformacion * trans;
-	int resp_size = resp_prot_cod;
-	if (cod_resp == EXITO) {
-		resp_size += (resp_prot_etapa + resp_prot_job_id);
-		i = 0;
-		while (i < (transformaciones->elements_count)) {
-			trans = (t_transformacion *) list_get(transformaciones, i);
-			resp_size += (5 * sizeof(int32_t)) + (strlen(trans->nodo) + 1) + (strlen(trans->ip_port) + 1) + (strlen(trans->archivo_temporal) + 1);
-			i++;
+	int length;
+
+	for (i = 0; i < cant_red; i++) {
+
+		red_local = (t_red_local *) malloc(sizeof(t_red_local));
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_nodo_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
 		}
-	}
-
-	void * response = malloc(resp_size);
-	memcpy(response, &cod_resp, resp_prot_cod);
-
-	if (cod_resp == EXITO) {
-		int memcpy_pos = resp_prot_cod;
-		memcpy(response + memcpy_pos, &etapa, resp_prot_etapa);
-		memcpy_pos += resp_prot_etapa;
-		memcpy(response + memcpy_pos, &job_id, resp_prot_job_id);
-		memcpy_pos += resp_prot_job_id;
-		agregar_transformaciones(response, memcpy_pos, transformaciones);
-	}
-
-	socket_write(socket_cliente, response, resp_size);
-	free(response);
-}
-
-
-/**	╔════════════════════════════════════╗
-	║ RESULTADO TRANSFORMACION DE BLOQUE ║
-	╚════════════════════════════════════╝ **/
-
-void yama_resultado_transf_bloque(int socket_servidor, int job_id, char * nodo, int bloque, int cod_resultado_transf, t_log * log) {
-
-	/**	╔════════════════════════╦══════════════════╦═════════════════════╦══════╦══════════════════╦═══════════════════════════════╗
-		║ cod operacion (1 byte) ║ job id (4 bytes) ║ nodo size (4 bytes) ║ nodo ║ bloque (4 bytes) ║ cod_resultado_transf (1 byte) ║
-		╚════════════════════════╩══════════════════╩═════════════════════╩══════╩══════════════════╩═══════════════════════════════╝ **/
-
-	uint8_t prot_cod_operacion = 1;
-	uint8_t prot_job_id = 4;
-	uint8_t prot_nodo_size = 4;
-	uint8_t prot_bloque = 4;
-	uint8_t prot_cod_resultado_transf = 1;
-
-	uint8_t req_cod_operacion = RESULTADO_TRANSFORMACION_BLOQUE;
-	uint32_t req_job_id = job_id;
-	uint32_t req_nodo_size = strlen(nodo) + 1;
-	uint32_t req_bloque = bloque;
-	int8_t req_resultado_transf = cod_resultado_transf;
-
-	int msg_size = sizeof(char) * (prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_bloque + prot_cod_resultado_transf);
-	void * request = malloc(msg_size);
-	memcpy(request, &req_cod_operacion, prot_cod_operacion);
-	memcpy(request + prot_cod_operacion, &req_job_id, prot_job_id);
-	memcpy(request + prot_cod_operacion + prot_job_id, &req_nodo_size, prot_nodo_size);
-	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size, nodo, req_nodo_size);
-	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size, &req_bloque, prot_bloque);
-	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_bloque, &req_resultado_transf, prot_cod_resultado_transf);
-	socket_send(&socket_servidor, request, msg_size, 0);
-	free(request);
-
-}
-
-t_yama_resultado_transf_bloque_req * yama_resultado_transf_bloque_recv_req(int * socket_cliente, t_log * log) {
-
-	t_yama_resultado_transf_bloque_req * request = malloc(sizeof(t_yama_resultado_transf_bloque_req));
-
-	uint8_t prot_job_id = 4;
-	int bytes_recv = socket_recv(socket_cliente, &(request->job_id), prot_job_id);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	int nodo_size;
-	uint8_t prot_nodo_size = 4;
-	bytes_recv = socket_recv(socket_cliente, &nodo_size, prot_nodo_size);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	request->nodo = malloc(sizeof(char) * nodo_size);
-	bytes_recv = socket_recv(socket_cliente, (request->nodo), nodo_size);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	uint8_t prot_bloque = 4;
-	bytes_recv = socket_recv(socket_cliente, &(request->bloque), prot_bloque);
-	if (bytes_recv <= 0) {
-		free(request->nodo);
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	uint8_t prot_cod_resultado_transf = 1;
-	bytes_recv = socket_recv(socket_cliente, &(request->resultado_transf), prot_cod_resultado_transf);
-	if (bytes_recv <= 0) {
-		free(request->nodo);
-		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);
-		request->exec_code = CLIENTE_DESCONECTADO;
-		return request;
-	}
-	request->exec_code = EXITO;
-	return request;
-}
-
-
-/**	╔════════════════════╗
-	║ YAMA PLANIFICACION ║
-	╚════════════════════╝ **/
-
-t_yama_planificacion_resp * yama_resp_planificacion(int socket_servidor, t_log * log) {
-
-	t_yama_planificacion_resp * resp = malloc(sizeof(t_yama_planificacion_resp));
-
-	uint8_t resp_prot_etapa = 1;
-	int bytes_recv = socket_recv(&socket_servidor, &(resp->etapa), resp_prot_etapa);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
-		resp->exec_code = SERVIDOR_DESCONECTADO;
-		return resp;
-	}
-
-	uint8_t resp_prot_job_id = 1;
-	bytes_recv = socket_recv(&socket_servidor, &(resp->job_id), resp_prot_job_id);
-	if (bytes_recv <= 0) {
-		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
-		resp->exec_code = SERVIDOR_DESCONECTADO;
-		return resp;
-	}
-
-	t_list * planificados = list_create();
-
-	int res;
-	if ((resp->etapa) == REPLANIFICACION) {
-		res = recv_transformaciones(socket_servidor, planificados, log);
-	}
-
-	//
-	// TODO: VER INCLUIR LAS OTRAS ETAPAS
-	//
-
-	if (res == EXITO) {
-		resp->planificados = planificados;
-	} else {
-		// TODO: VER INCLUIR LAS OTRAS ETAPAS
-		list_destroy_and_destroy_elements(planificados, &closure_tt);
-	}
-
-	resp->exec_code = res;
-	return resp;
-}
-
-void yama_planificacion_send_resp(int * socket_cliente, int etapa, int job_id, t_list * planificados) {
-
-	uint8_t resp_prot_etapa = 1;
-	uint8_t resp_prot_job_id = 4;
-
-	int resp_size = (resp_prot_etapa + resp_prot_job_id);
-
-	if (etapa == REPLANIFICACION) {
-		t_transformacion * trans;
-		int i = 0;
-		while (i < (planificados->elements_count)) {
-			trans = (t_transformacion *) list_get(planificados, i);
-			resp_size += (5 * sizeof(int32_t)) + (strlen(trans->nodo) + 1) + (strlen(trans->ip_port) + 1) + (strlen(trans->archivo_temporal) + 1);
-			i++;
+		red_local->nodo = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->nodo), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
 		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_ip_puerto_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_local->ip_port = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->ip_port), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_arch_temp_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_local->archivo_temp = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->archivo_temp), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_arch_rl_temp_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_local->archivo_rl_temp = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->archivo_rl_temp), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rl(red_local);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		list_add(reducciones, red_local);
 	}
 
-	void * response = malloc(resp_size);
-	int memcpy_pos = 0;
-	memcpy(response + memcpy_pos, &etapa, resp_prot_etapa);
-	memcpy_pos += resp_prot_etapa;
-	memcpy(response + memcpy_pos, &job_id, resp_prot_job_id);
-	memcpy_pos += resp_prot_job_id;
-
-	if (REPLANIFICACION) {
-		agregar_transformaciones(response, memcpy_pos, planificados);
-	}
-
-	// TODO: VER INCLUIR LAS OTRAS ETAPAS
-
-	socket_write(socket_cliente, response, resp_size);
-	free(response);
+	return EXITO;
 }
 
 void closure_tt(t_transformacion * element) {
 	if (element->nodo) free(element->nodo);
 	if (element->ip_port) free(element->ip_port);
 	if (element->archivo_temporal) free(element->archivo_temporal);
+	free(element);
+}
+
+void closure_rl(t_red_local * element) {
+	if (element->nodo) free(element->nodo);
+	if (element->ip_port) free(element->ip_port);
+	if (element->archivo_temp) free(element->archivo_temp);
+	if (element->archivo_rl_temp) free(element->archivo_rl_temp);
 	free(element);
 }
