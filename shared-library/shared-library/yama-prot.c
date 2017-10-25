@@ -3,10 +3,13 @@
 
 void closure_tt(t_transformacion *);
 void closure_rl(t_red_local *);
+void closure_rg(t_red_global *);
 void agregar_transformaciones(void *, int, t_list *);
 void agregar_reducciones_locales(void *, int, t_list *);
+void agregar_reducciones_globales(void *, int, t_list *);
 int recv_reducciones_locales(int, t_list *, t_log *);
 int recv_transformaciones(int, t_list *, t_log *);
+int recv_reducciones_globales(int, t_list *, t_log *);
 
 
 /**	╔════════════════════════╗
@@ -275,7 +278,7 @@ t_yama_planificacion_resp * yama_resp_planificacion(int socket_servidor, t_log *
 
 	t_list * planificados = list_create();
 
-	if ((resp->etapa) == TRANSFORMACION || (resp->etapa) == REPLANIFICACION) {
+	if ((resp->etapa) == TRANSFORMACION) {
 		resp->exec_code = recv_transformaciones(socket_servidor, planificados, log);
 		if ((resp->exec_code) == EXITO) {
 			resp->planificados = planificados;
@@ -288,6 +291,13 @@ t_yama_planificacion_resp * yama_resp_planificacion(int socket_servidor, t_log *
 			resp->planificados = planificados;
 		} else {
 			list_destroy_and_destroy_elements(planificados, &closure_rl);
+		}
+	} else if ((resp->etapa) == REDUCCION_GLOBAL) {
+		resp->exec_code = recv_reducciones_globales(socket_servidor, planificados, log);
+		if ((resp->exec_code) == EXITO) {
+			resp->planificados = planificados;
+		} else {
+			list_destroy_and_destroy_elements(planificados, &closure_rg);
 		}
 	}
 
@@ -307,12 +317,12 @@ void yama_planificacion_send_resp(int * socket_cliente, int cod_resp, int etapa,
 	int resp_size = (resp_prot_cod + resp_prot_etapa + resp_prot_job_id);
 
 	if (cod_resp == EXITO) {
-		if (etapa == TRANSFORMACION || etapa == REPLANIFICACION) {
+		if (etapa == TRANSFORMACION) {
 			t_transformacion * trans;
 			int i = 0;
 			while (i < (planificados->elements_count)) {
 				trans = (t_transformacion *) list_get(planificados, i);
-				resp_size += (5 * sizeof(int32_t)) + (strlen(trans->nodo) + 1) + (strlen(trans->ip_port) + 1) + (strlen(trans->archivo_temporal) + 1);
+				resp_size += (5 * sizeof(int32_t)) + (strlen(trans->nodo) + 1) + (strlen(trans->ip_puerto) + 1) + (strlen(trans->archivo_temporal) + 1);
 				i++;
 			}
 		} else if (etapa == REDUCCION_LOCAL) {
@@ -320,7 +330,16 @@ void yama_planificacion_send_resp(int * socket_cliente, int cod_resp, int etapa,
 			int i = 0;
 			while (i < (planificados->elements_count)) {
 				red_local = (t_red_local *) list_get(planificados, i);
-				resp_size += (4 * sizeof(int32_t)) + (strlen(red_local->nodo) + 1) + (strlen(red_local->ip_port) + 1) + (strlen(red_local->archivo_temp) + 1) + (strlen(red_local->archivo_rl_temp) + 1);
+				resp_size += (4 * sizeof(int32_t)) + (strlen(red_local->nodo) + 1) + (strlen(red_local->ip_puerto) + 1) + (strlen(red_local->archivos_temp) + 1) + (strlen(red_local->archivo_rl_temp) + 1);
+				i++;
+			}
+		} else if (etapa == REDUCCION_GLOBAL) {
+			t_red_global * red_global;
+			int i = 0;
+			while (i < (planificados->elements_count)) {
+				red_global = (t_red_global *) list_get(planificados, i);
+				resp_size += sizeof(uint8_t) + (4 * sizeof(int32_t)) + (strlen(red_global->nodo) + 1)
+						+ (strlen(red_global->ip_puerto) + 1) + (strlen(red_global->archivo_rl_temp) + 1) + (strlen(red_global->archivo_rg) + 1);
 				i++;
 			}
 		}
@@ -337,10 +356,12 @@ void yama_planificacion_send_resp(int * socket_cliente, int cod_resp, int etapa,
 
 	if (cod_resp == EXITO) {
 
-		if (etapa == TRANSFORMACION || etapa == REPLANIFICACION) {
+		if (etapa == TRANSFORMACION) {
 			agregar_transformaciones(response, memcpy_pos, planificados);
 		} else if (etapa == REDUCCION_LOCAL) {
 			agregar_reducciones_locales(response, memcpy_pos, planificados);
+		} else if (etapa == REDUCCION_GLOBAL) {
+			agregar_reducciones_globales(response, memcpy_pos, planificados);
 		}
 
 		// TODO: VER INCLUIR LAS OTRAS ETAPAS
@@ -378,11 +399,11 @@ void agregar_transformaciones(void * response, int memcpy_pos, t_list * transfor
 		memcpy(response + memcpy_pos, (trans->nodo), length);
 		memcpy_pos += length;
 
-		length = (strlen(trans->ip_port) + 1);
+		length = (strlen(trans->ip_puerto) + 1);
 		memcpy(response + memcpy_pos, &length, resp_prot_ip_puerto_size);
 		memcpy_pos += resp_prot_ip_puerto_size;
 
-		memcpy(response + memcpy_pos, (trans->ip_port), length);
+		memcpy(response + memcpy_pos, (trans->ip_puerto), length);
 		memcpy_pos += length;
 
 		memcpy(response + memcpy_pos, &(trans->bloque), resp_prot_bloque);
@@ -446,8 +467,8 @@ int recv_transformaciones(int socket_servidor, t_list * lista_tranfs, t_log * lo
 			closure_tt(transf);
 			return SERVIDOR_DESCONECTADO;
 		}
-		transf->ip_port = malloc(sizeof(char) * length);
-		bytes_recv = socket_recv(&socket_servidor, (transf->ip_port), length);
+		transf->ip_puerto = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (transf->ip_puerto), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
 			closure_tt(transf);
@@ -513,18 +534,18 @@ void agregar_reducciones_locales(void * response, int memcpy_pos, t_list * reduc
 		memcpy(response + memcpy_pos, (red_local->nodo), length);
 		memcpy_pos += length;
 
-		length = (strlen(red_local->ip_port) + 1);
+		length = (strlen(red_local->ip_puerto) + 1);
 		memcpy(response + memcpy_pos, &length, resp_prot_ip_puerto_size);
 		memcpy_pos += resp_prot_ip_puerto_size;
 
-		memcpy(response + memcpy_pos, (red_local->ip_port), length);
+		memcpy(response + memcpy_pos, (red_local->ip_puerto), length);
 		memcpy_pos += length;
 
-		length = (strlen(red_local->archivo_temp) + 1);
+		length = (strlen(red_local->archivos_temp) + 1);
 		memcpy(response + memcpy_pos, &length, resp_prot_arch_temp_size);
 		memcpy_pos += resp_prot_arch_temp_size;
 
-		memcpy(response + memcpy_pos, (red_local->archivo_temp), length);
+		memcpy(response + memcpy_pos, (red_local->archivos_temp), length);
 		memcpy_pos += length;
 
 		length = (strlen(red_local->archivo_rl_temp) + 1);
@@ -581,8 +602,8 @@ int recv_reducciones_locales(int socket_servidor, t_list * reducciones, t_log * 
 			closure_rl(red_local);
 			return SERVIDOR_DESCONECTADO;
 		}
-		red_local->ip_port = malloc(sizeof(char) * length);
-		bytes_recv = socket_recv(&socket_servidor, (red_local->ip_port), length);
+		red_local->ip_puerto = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->ip_puerto), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
 			closure_rl(red_local);
@@ -595,8 +616,8 @@ int recv_reducciones_locales(int socket_servidor, t_list * reducciones, t_log * 
 			closure_rl(red_local);
 			return SERVIDOR_DESCONECTADO;
 		}
-		red_local->archivo_temp = malloc(sizeof(char) * length);
-		bytes_recv = socket_recv(&socket_servidor, (red_local->archivo_temp), length);
+		red_local->archivos_temp = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_local->archivos_temp), length);
 		if (bytes_recv <= 0) {
 			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
 			closure_rl(red_local);
@@ -623,17 +644,172 @@ int recv_reducciones_locales(int socket_servidor, t_list * reducciones, t_log * 
 	return EXITO;
 }
 
+void agregar_reducciones_globales(void * response, int memcpy_pos, t_list * reducciones_g) {
+
+	uint8_t resp_prot_cant_elem = 4;
+	uint8_t resp_prot_nodo_size = 4;
+	uint8_t resp_prot_ip_puerto_size = 4;
+	uint8_t resp_prot_arch_rl_temp_size = 4;
+	uint8_t resp_prot_designado = 1;
+	uint8_t resp_prot_arch_rg_size = 4;
+
+	memcpy(response + memcpy_pos, &(reducciones_g->elements_count), resp_prot_cant_elem);
+	memcpy_pos += resp_prot_cant_elem;
+
+	int i = 0;
+	int length;
+	t_red_global * red_global;
+
+	while (i < (reducciones_g->elements_count)) {
+		red_global = (t_red_local *) list_get(reducciones_g, i);
+
+		length = (strlen(red_global->nodo) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_nodo_size);
+		memcpy_pos += resp_prot_nodo_size;
+
+		memcpy(response + memcpy_pos, (red_global->nodo), length);
+		memcpy_pos += length;
+
+		length = (strlen(red_global->ip_puerto) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_ip_puerto_size);
+		memcpy_pos += resp_prot_ip_puerto_size;
+
+		memcpy(response + memcpy_pos, (red_global->ip_puerto), length);
+		memcpy_pos += length;
+
+		length = (strlen(red_global->archivo_rl_temp) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_arch_rl_temp_size);
+		memcpy_pos += resp_prot_arch_rl_temp_size;
+
+		memcpy(response + memcpy_pos, (red_global->archivo_rl_temp), length);
+		memcpy_pos += length;
+
+		memcpy(response + memcpy_pos, &(red_global->designado), resp_prot_designado);
+		memcpy_pos += resp_prot_designado;
+
+		length = (strlen(red_global->archivo_rg) + 1);
+		memcpy(response + memcpy_pos, &length, resp_prot_arch_rg_size);
+		memcpy_pos += resp_prot_arch_rg_size;
+
+		memcpy(response + memcpy_pos, (red_global->archivo_rg), length);
+		memcpy_pos += length;
+
+		i++;
+	}
+}
+
+int recv_reducciones_globales(int socket_servidor, t_list * reducciones, t_log * log) {
+
+	uint8_t resp_prot_cant_elem = 4;
+	uint8_t resp_prot_nodo_size = 4;
+	uint8_t resp_prot_ip_puerto_size = 4;
+	uint8_t resp_prot_arch_rl_temp_size = 4;
+	uint8_t resp_prot_designado = 1;
+	uint8_t resp_prot_arch_rg_size = 4;
+
+	int cant_red;
+	int bytes_recv = socket_recv(&socket_servidor, &(cant_red), resp_prot_cant_elem);
+	if (bytes_recv <= 0) {
+		if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+		return SERVIDOR_DESCONECTADO;
+	}
+
+	t_red_global * red_global;
+	int i;
+	int length;
+
+	for (i = 0; i < cant_red; i++) {
+
+		red_global = (t_red_global *) malloc(sizeof(t_red_global));
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_nodo_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_global->nodo = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_global->nodo), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_ip_puerto_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_global->ip_puerto = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_global->ip_puerto), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_arch_rl_temp_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_global->archivo_rl_temp = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_global->archivo_rl_temp), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &(red_global->designado), resp_prot_designado);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		bytes_recv = socket_recv(&socket_servidor, &length, resp_prot_arch_rg_size);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+		red_global->archivo_rg = malloc(sizeof(char) * length);
+		bytes_recv = socket_recv(&socket_servidor, (red_global->archivo_rg), length);
+		if (bytes_recv <= 0) {
+			if (log) log_error(log, "------ SERVIDOR %d >> desconectado", socket_servidor);
+			closure_rg(red_global);
+			return SERVIDOR_DESCONECTADO;
+		}
+
+		list_add(reducciones, red_global);
+	}
+
+	return EXITO;
+}
+
 void closure_tt(t_transformacion * element) {
 	if (element->nodo) free(element->nodo);
-	if (element->ip_port) free(element->ip_port);
+	if (element->ip_puerto) free(element->ip_puerto);
 	if (element->archivo_temporal) free(element->archivo_temporal);
 	free(element);
 }
 
 void closure_rl(t_red_local * element) {
 	if (element->nodo) free(element->nodo);
-	if (element->ip_port) free(element->ip_port);
-	if (element->archivo_temp) free(element->archivo_temp);
+	if (element->ip_puerto) free(element->ip_puerto);
+	if (element->archivos_temp) free(element->archivos_temp);
 	if (element->archivo_rl_temp) free(element->archivo_rl_temp);
+	free(element);
+}
+
+void closure_rg(t_red_global * element) {
+	if (element->nodo) free(element->nodo);
+	if (element->ip_puerto) free(element->ip_puerto);
+	if (element->archivo_rl_temp) free(element->archivo_rl_temp);
+	if (element->archivo_rg) free(element->archivo_rg);
 	free(element);
 }

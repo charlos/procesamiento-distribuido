@@ -13,20 +13,24 @@
 
 // ETAPAS JOBS
 #define TRANSFORMACION         		  	   1
-#define REPLANIFICACION       		  	   2
-#define REDUCCION_LOCAL          	   	   3
-#define REDUCCION_GLOBAL   	           	   4
-#define JOB_FINALIZADO_OK		           5
-#define JOB_FINALIZADO_ERROR		   	   6
+#define REDUCCION_LOCAL          	   	   2
+#define REDUCCION_GLOBAL   	           	   3
+#define FINALIZADO_OK		           	   4
+#define FINALIZADO_ERROR		   	       5
 
-// ESTADOS BLOQUES
+// ESTADOS BLOQUES (TRANSFORMACION)
 #define TRANSF_EN_PROCESO			  	   1
 #define TRANSF_OK 	  		   	   		   2
 #define TRANSF_ERROR             		   3
 #define TRANSF_ERROR_SIN_NODOS_DISP        4
-#define REDUC_LOCAL_EN_PROCESO			   1
-#define REDUC_LOCAL_OK 	  		   	   	   2
-#define REDUC_LOCAL_ERROR             	   3
+
+// ESTADOS NODOS (REDUCCION LOCAL Y REDUCCION GLOBAL)
+#define REDUC_LOCAL_EN_PROCESO			   5
+#define REDUC_LOCAL_OK 	  		   	   	   6
+#define REDUC_LOCAL_ERROR             	   7
+#define REDUC_GLOBAL_EN_PROCESO			   8
+#define REDUC_GLOBAL_OK 	  		   	   9
+#define REDUC_GLOBAL_ERROR             	  10
 
 // CODIGOS DE RESPUESTAS
 #define	EXITO      				  	       1
@@ -48,7 +52,7 @@ typedef struct {
 
 typedef struct {
 	char * nodo;
-	char * ip_port;
+	char * ip_puerto;
 	uint32_t bloque;
 	uint32_t bytes_ocupados;
 	char * archivo_temporal;
@@ -56,10 +60,18 @@ typedef struct {
 
 typedef struct {
 	char * nodo;
-	char * ip_port;
-	char * archivo_temp;
+	char * ip_puerto;
+	char * archivos_temp;
 	char * archivo_rl_temp;
 } t_red_local;
+
+typedef struct {
+	char * nodo;
+	char * ip_puerto;
+	char * archivo_rl_temp;
+	uint8_t designado;
+	char * archivo_rg;
+} t_red_global;
 
 typedef struct {
 	int16_t exec_code;
@@ -67,7 +79,6 @@ typedef struct {
 	int32_t job_id;
 	t_list * planificados;
 } t_yama_planificacion_resp;
-
 
 /**
  * @NAME yama_nueva_solicitud
@@ -82,8 +93,6 @@ t_yama_planificacion_resp * yama_nueva_solicitud(int, char *, t_log *);
  *
  */
 t_yama_nueva_solicitud_req * yama_nueva_solicitud_recv_req(int *, t_log *);
-
-
 
 typedef struct {
 	int16_t exec_code;
@@ -107,8 +116,6 @@ void yama_registrar_resultado_transf_bloque(int, int, char *, int, int, t_log *)
  */
 t_yama_reg_resultado_t_req * yama_registrar_resultado_t_recv_req(int *, t_log *);
 
-
-
 typedef struct {
 	int16_t exec_code;
 	uint32_t job_id;
@@ -129,13 +136,6 @@ void yama_registrar_resultado_reduccion_local(int, int, char *, int, t_log *);
  *
  */
 t_yama_reg_resultado_rl_req * yama_registrar_resultado_rl_recv_req(int *, t_log *);
-
-
-
-
-
-
-
 
 /**
  * @NAME yama_resp_planificacion

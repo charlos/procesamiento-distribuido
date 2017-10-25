@@ -23,32 +23,37 @@ t_list * tabla_de_estados;
 #define	CLOCK 								1
 #define	WCLOCK								2
 
-
-void cargar_configuracion(void);
-void crear_log(void);
-void inicio(void);
+void registrar_resultado_t_bloque(int *, int, char *, int, int);
+void registrar_resultado_rl(int *, int, char *, int);
+void registrar_error_job(int);
+void reducir_carga_nodo(char *);
+void reducir_carga_nodo_rl(int, char *);
 void recibir_solicitudes_master(void);
-int atender_solicitud_master(int *);
-int nueva_solicitud(int *);
 void procesar_nueva_solicitud(int *, char *);
-void cierre(void *);
+void posicionar_clock(void);
+void planificar_etapa_reduccion_local_nodo(int *, int, char *);
+void planificar_etapa_reduccion_global(int *, int);
+void inicio(void);
+void incluir_nodos_para_balanceo(t_fs_metadata_file *);
+void crear_log(void);
 void cierre_t(t_transformacion *);
 void cierre_rl(t_red_local *);
-void incluir_nodos_para_balanceo(t_fs_metadata_file *);
-void calcular_disponibilidad_nodos(void);
-int disponibilidad(char *);
-int pwl(char *);
-void posicionar_clock(void);
-t_list * planificar_etapa_transformacion(t_fs_metadata_file *);
-void balanceo_de_carga(t_list *, int, t_list *);
-int registrar_resultado_transformacion_bloque(int *);
-void registrar_resultado_t_bloque(int *, int, char *, int, int);
+void cierre_rg(t_red_global *);
+void cierre_cmd(t_fs_copy_block *);
+void cierre_bamd(t_fs_file_block_metadata *);
 void chequear_inicio_reduccion_local(int *, int, char *);
-void planificar_etapa_reduccion_local_nodo(int *, int, char *);
-
-
-
+void chequear_inicio_reduccion_global(int *, int);
+void cargar_configuracion(void);
+void calcular_disponibilidad_nodos(void);
+void balanceo_de_carga(t_fs_file_block_metadata *, t_list *);
+t_list * planificar_etapa_transformacion(t_fs_metadata_file *);
+int registrar_resultado_transformacion_bloque(int *);
+int registrar_resultado_reduccion_local(int *);
+int pwl(char *);
+int nueva_solicitud(int *);
+int disponibilidad(char *);
 int balanceo_de_carga_replanificacion(int, t_list *);
+int atender_solicitud_master(int *);
 
 int main(void) {
 	cargar_configuracion();
@@ -76,7 +81,7 @@ int main(void) {
 void cargar_configuracion(void) {
 	t_config * conf = config_create("/home/utnso/yama.cfg");
 	yama_conf = malloc(sizeof(t_yama_conf));
-	yama_conf->port = config_get_int_value(conf, "PUERTO");
+	yama_conf->puerto = config_get_int_value(conf, "PUERTO");
 	yama_conf->fs_ip = config_get_string_value(conf, "FS_IP");
 	yama_conf->fs_puerto = config_get_string_value(conf, "FS_PUERTO");
 	yama_conf->retardo_plan = config_get_int_value(conf, "RETARDO_PLANIFICACION");
@@ -108,7 +113,7 @@ void recibir_solicitudes_master(void) {
 	int atsm;
 	int nuevaConexion;
 	int fd_seleccionado;
-	int listening_socket = open_socket(SOCKET_BACKLOG, (yama_conf->port));
+	int listening_socket = open_socket(SOCKET_BACKLOG, (yama_conf->puerto));
 	int set_fd_max = listening_socket;
 
 	fd_set lectura;
@@ -204,11 +209,13 @@ void procesar_nueva_solicitud(int * socket_cliente, char * archivo) {
 		t_list * planificados = planificar_etapa_transformacion(metadata);
 		yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, new_job_id, planificados);
 
+
 		list_destroy_and_destroy_elements(planificados, &cierre_t);
-		list_destroy_and_destroy_elements((metadata->block_list), &cierre);
+		list_destroy_and_destroy_elements((metadata->block_list), &cierre_bamd);
+		free(metadata->path);
 		free(metadata);
 	} else {
-		yama_planificacion_send_resp(socket_cliente, (resp->exec_code), JOB_FINALIZADO_ERROR, -1, NULL);
+		yama_planificacion_send_resp(socket_cliente, (resp->exec_code), FINALIZADO_ERROR, -1, NULL);
 	}
 	free(resp);
 }
@@ -336,7 +343,7 @@ t_list * planificar_etapa_transformacion(t_fs_metadata_file * metadata) {
 	int i = 0;
 	while (i < (bloques_archivo->elements_count)) {
 		bloque_archivo_md = (t_fs_file_block_metadata *) list_get(bloques_archivo, i);
-		balanceo_de_carga((bloque_archivo_md->copies_list), (bloque_archivo_md->size), planificados);
+		balanceo_de_carga(bloque_archivo_md, planificados);
 		i++;
 	}
 	return planificados;
@@ -345,46 +352,65 @@ t_list * planificar_etapa_transformacion(t_fs_metadata_file * metadata) {
 /**
  * @NAME balanceo_de_carga
  */
-void balanceo_de_carga(t_list * copias_bloque_archivo, int bytes_ocupados, t_list * planificados) {
+void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * planificados) {
+
+	t_list * copias_bloque_md = (bloque_archivo_md->copies_list);
+	t_fs_copy_block * copia_md;
+	t_list * copias_bloque = list_create();
+	t_yama_copia_bloque * copia;
+
+	int index = 0;
+	while (index < (copias_bloque_md->elements_count)) {
+		copia_md = (t_fs_copy_block *) list_get(copias_bloque_md, index);
+		copia = (t_yama_copia_bloque *) malloc (sizeof(t_yama_copia_bloque));
+		copia->nodo = string_duplicate(copia_md->node);
+		copia->ip_puerto = string_duplicate(copia_md->ip_port);
+		copia->bloque_nodo = (copia_md->node_block);
+		copia->planificada = false;
+		list_add(copias_bloque, copia);
+		index++;
+	}
+
+	t_yama_carga_nodo * carga_nodo;
+	t_transformacion * transformacion;
+	t_yama_estado_bloque * estado_bloque;
 
 	int clock_aux = clock;
-
-	t_fs_copy_block * copia;
-	t_yama_carga_nodo * carga_nodo;
-
-	int index;
 	for (;;) {
 
 		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, clock_aux);
 		index = 0;
 
-		while (index < (copias_bloque_archivo->elements_count)) {
+		while (index < (copias_bloque->elements_count)) {
 
-			copia = (t_fs_copy_block *) list_get(copias_bloque_archivo, index);
+			copia = (t_yama_copia_bloque *) list_get(copias_bloque, index);
 
-			if ((strcmp((carga_nodo->nodo), (copia->node)) == 0) && ((carga_nodo->disponibilidad) > 0)) {
+			if ((strcmp((carga_nodo->nodo), (copia->nodo)) == 0) && ((carga_nodo->disponibilidad) > 0)) {
 
 				char * archivo_temp = string_new();
-				string_append_with_format(&archivo_temp, "/tmp/J%d-%s-B%dETF", new_job_id, (carga_nodo->nodo), (copia->node_block));
+				string_append_with_format(&archivo_temp, "/tmp/J%d-%s-B%dETF", new_job_id, (copia->nodo), (copia->bloque_nodo));
 
-				t_transformacion * transformacion = (t_transformacion *) malloc (sizeof(t_transformacion));
-				transformacion->nodo = string_duplicate(copia->node);
-				transformacion->ip_port = string_duplicate(copia->ip_port);
-				transformacion->bloque = (copia->node_block);
-				transformacion->bytes_ocupados = bytes_ocupados;
+				copia->planificada = true;
+
+				transformacion = (t_transformacion *) malloc (sizeof(t_transformacion));
+				transformacion->nodo = string_duplicate(copia->nodo);
+				transformacion->ip_puerto = string_duplicate(copia->ip_puerto);
+				transformacion->bloque = (copia->bloque_nodo);
+				transformacion->bytes_ocupados = (bloque_archivo_md->size);
 				transformacion->archivo_temporal = string_duplicate(archivo_temp);
 				list_add(planificados, transformacion);
 
-				t_yama_estado_bloque * estado_bloque = (t_yama_estado_bloque *) malloc (sizeof(t_yama_estado_bloque));
+				estado_bloque = (t_yama_estado_bloque *) malloc (sizeof(t_yama_estado_bloque));
 				estado_bloque->job_id = new_job_id;
 				estado_bloque->etapa = TRANSFORMACION;
-				estado_bloque->nodo = string_duplicate(copia->node);
-				estado_bloque->ip_port = string_duplicate(copia->ip_port);
-				estado_bloque->bloque = (copia->node_block);
-				estado_bloque->bytes_ocupados = bytes_ocupados;
+				estado_bloque->bloque_archivo = (bloque_archivo_md->file_block);
+				estado_bloque->nodo = string_duplicate(copia->nodo);
+				estado_bloque->ip_puerto = string_duplicate(copia->ip_puerto);
+				estado_bloque->bloque_nodo = (copia->bloque_nodo);
+				estado_bloque->bytes_ocupados = (bloque_archivo_md->size);
 				estado_bloque->estado = TRANSF_EN_PROCESO;
 				estado_bloque->archivo_temp = string_duplicate(archivo_temp);
-				estado_bloque->copias = copias_bloque_archivo;  // TODO: ¿esta lista sigue viva cuando libero la estructura entregada por FS?
+				estado_bloque->copias = copias_bloque;
 				list_add(estado_bloque, tabla_de_estados);
 
 				free(archivo_temp);
@@ -397,7 +423,6 @@ void balanceo_de_carga(t_list * copias_bloque_archivo, int bytes_ocupados, t_lis
 				if (clock_aux >= (carga_nodos->elements_count))
 					clock_aux = 0;
 
-
 				carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, clock_aux);
 				if ((carga_nodo->disponibilidad) == 0) {
 					carga_nodo->disponibilidad = (yama_conf->disp_base);
@@ -408,11 +433,8 @@ void balanceo_de_carga(t_list * copias_bloque_archivo, int bytes_ocupados, t_lis
 
 				clock = clock_aux;
 				return;
-
 			}
-
 			index++;
-
 		}
 
 		clock_aux++; // avanzo clock
@@ -424,6 +446,7 @@ void balanceo_de_carga(t_list * copias_bloque_archivo, int bytes_ocupados, t_lis
 			while (index < (carga_nodos->elements_count)) {
 				carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
 				carga_nodo->disponibilidad += (yama_conf->disp_base);
+				index++;
 			}
 		}
 	}
@@ -460,36 +483,26 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 	int index = 0;
 	while (index < (tabla_de_estados->elements_count)) {
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
-		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)
-				&& ((estado_bloque->bloque) == bloque) && ((estado_bloque->etapa) == TRANSFORMACION)) {
-
-			if (resultado == TRANSF_OK) {
-				estado_bloque->estado = resultado;
-			} else {
-				//
-				// error transformacion -> replanificacion
-				//
-
-				t_list * planificados = list_create();
-
-				t_yama_carga_nodo * carga_nodo; // reduzco carga del nodo por error
-				int j = 0;
-				while (j < (carga_nodos->elements_count)) {
-					carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, j);
-					if (strcmp((carga_nodo->nodo), (estado_bloque->nodo)) == 0) {
-						(carga_nodo->wl)--;
-						break;
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0) && ((estado_bloque->bloque_nodo) == bloque)) {
+			if ((estado_bloque->etapa) == FINALIZADO_ERROR)	 {
+				// el job finalizo antes, por un error previo
+				// perteneciente a otra transformacion perteneciente al mismo job
+				reducir_carga_nodo(nodo);
+			} else if ((estado_bloque->etapa) == TRANSFORMACION) {
+				if (resultado == TRANSF_ERROR) {
+					// replanificacion transformacion
+					reducir_carga_nodo(nodo);
+					t_list * planificados = list_create();
+					if (balanceo_de_carga_replanificacion(index, planificados) == EXITO) {
+						yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, job_id, planificados);
+					} else {
+						registrar_error_job(job_id);
+						yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 					}
-					j++;
+					list_destroy_and_destroy_elements(planificados, &cierre_t);
+				} else if (resultado == REDUC_LOCAL_OK) {
+					estado_bloque->estado = resultado;
 				}
-
-				if (balanceo_de_carga_replanificacion(index, planificados) == EXITO) {
-					yama_planificacion_send_resp(socket_cliente, EXITO, REPLANIFICACION, job_id, planificados);
-				} else {
-					yama_planificacion_send_resp(socket_cliente, ERROR, JOB_FINALIZADO_ERROR, job_id, NULL);
-				}
-				list_destroy_and_destroy_elements(planificados, &cierre_t);
-
 			}
 			return;
 		}
@@ -504,59 +517,59 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 
 	t_yama_estado_bloque * estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, pos_tabla_estados);
 
-	t_list * copias_bloque_archivo = (estado_bloque->copias);
-	t_fs_copy_block * copia_md;
+	t_list * copias_bloque = (estado_bloque->copias);
+	t_yama_copia_bloque * copia;
 
 	bool sin_nodos_disponibles = true;
 	int index = 0;
-	while (index < (copias_bloque_archivo->elements_count)) {
-		copia_md = (t_fs_copy_block *) list_get(copias_bloque_archivo, index);
-		if (strcmp((estado_bloque->nodo), (copia_md->node)) != 0) {
+	while (index < (copias_bloque->elements_count)) {
+		copia = (t_yama_copia_bloque *) list_get(copias_bloque, index);
+		if (!(copia->planificada)) {
 			sin_nodos_disponibles = false;
 			break;
 		}
 	}
 
 	if (sin_nodos_disponibles) {
-		estado_bloque->etapa = REPLANIFICACION;
 		estado_bloque->estado = TRANSF_ERROR_SIN_NODOS_DISP;
-		return JOB_FINALIZADO_ERROR;
+		return FINALIZADO_ERROR;
 	}
 
 	int clock_aux = clock;
 
-	t_fs_copy_block * copia;
 	t_yama_carga_nodo * carga_nodo;
+	t_transformacion * transformacion;
 
 	for (;;) {
 
 		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, clock_aux);
 		index = 0;
 
-		while (index < (copias_bloque_archivo->elements_count)) {
+		while (index < (copias_bloque->elements_count)) {
 
-			copia = (t_fs_copy_block *) list_get(copias_bloque_archivo, index);
+			copia = (t_fs_copy_block *) list_get(copias_bloque, index);
 
-			if ((strcmp((carga_nodo->nodo), (copia->node)) == 0) && (strcmp((carga_nodo->nodo), (estado_bloque->nodo)) != 0)
-					&&((carga_nodo->disponibilidad) > 0)) {
+			if (!(copia->planificada) && (strcmp((carga_nodo->nodo), (copia->nodo)) == 0) && ((carga_nodo->disponibilidad) > 0)) {
+
+				copia->planificada = true;
 
 				char * archivo_temp = string_new();
-				string_append_with_format(&archivo_temp, "/tmp/J%d-%s-B%dETF", (estado_bloque->job_id), (carga_nodo->nodo), (copia->node_block));
+				string_append_with_format(&archivo_temp, "/tmp/J%d-%s-B%d-transf", (estado_bloque->job_id), (copia->nodo), (copia->bloque_nodo));
 
-				t_transformacion * transformacion = (t_transformacion *) malloc (sizeof(t_transformacion));
-				transformacion->nodo = string_duplicate(copia_md->node);
-				transformacion->ip_port = string_duplicate(copia_md->ip_port);
-				transformacion->bloque = (copia_md->node_block);
+				transformacion = (t_transformacion *) malloc (sizeof(t_transformacion));
+				transformacion->nodo = string_duplicate(copia->nodo);
+				transformacion->ip_puerto = string_duplicate(copia->ip_puerto);
+				transformacion->bloque = (copia->bloque_nodo);
 				transformacion->bytes_ocupados = (estado_bloque->bytes_ocupados);
 				transformacion->archivo_temporal = string_duplicate(archivo_temp);
 				list_add(planificados, transformacion);
 
+				estado_bloque->etapa = TRANSFORMACION;
 				free(estado_bloque->nodo);
-				estado_bloque->nodo = string_duplicate(copia_md->node);
-				free(estado_bloque->ip_port);
-				estado_bloque->ip_port= string_duplicate(copia_md->ip_port);
-				estado_bloque->bloque = (copia_md->node_block);
-				estado_bloque->etapa = REPLANIFICACION;
+				estado_bloque->nodo = string_duplicate(copia->nodo);
+				free(estado_bloque->ip_puerto);
+				estado_bloque->ip_puerto= string_duplicate(copia->ip_puerto);
+				estado_bloque->bloque_nodo = (copia->bloque_nodo);
 				estado_bloque->estado = TRANSF_EN_PROCESO;
 				free(estado_bloque->archivo_temp);
 				estado_bloque->archivo_temp = string_duplicate(archivo_temp);
@@ -579,14 +592,10 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 					if (clock_aux >= (carga_nodos->elements_count))
 						clock_aux = 0;
 				}
-
 				clock = clock_aux;
 				return EXITO;
-
 			}
-
 			index++;
-
 		}
 
 		clock_aux++; // avanzo clock
@@ -598,6 +607,7 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 			while (index < (carga_nodos->elements_count)) {
 				carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
 				carga_nodo->disponibilidad += (yama_conf->disp_base);
+				index++;
 			}
 		}
 	}
@@ -608,18 +618,22 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
  */
 void chequear_inicio_reduccion_local(int * socket_cliente, int job_id, char * nodo) {
 
+	bool planificar_rl = true;
 	t_yama_estado_bloque * estado_bloque;
 	int index = 0;
 	while (index < (tabla_de_estados->elements_count)) {
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
-		if (((estado_bloque->job_id) == job_id) && ((estado_bloque->etapa) == TRANSFORMACION)
-				&& (strcmp((estado_bloque->nodo), nodo) == 0) && ((estado_bloque->estado) == TRANSF_EN_PROCESO)) {
-			return;
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+			if (((estado_bloque->etapa) != TRANSFORMACION) && ((estado_bloque->estado) != TRANSF_OK)) {
+				planificar_rl = false;
+				break;
+			}
 		}
 		index++;
 	}
 
-	planificar_etapa_reduccion_local_nodo(socket_cliente, job_id, nodo);
+	if (planificar_rl)
+		planificar_etapa_reduccion_local_nodo(socket_cliente, job_id, nodo);
 
 }
 
@@ -628,23 +642,28 @@ void chequear_inicio_reduccion_local(int * socket_cliente, int job_id, char * no
  */
 void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, char * nodo) {
 
+	t_yama_estado_bloque * estado_bloque;
 	t_list * planificados = list_create();
+	t_red_local * red_local;
 
 	char * archivo_rl_temp = string_new();
-	string_append_with_format(&archivo_rl_temp, "/tmp/J%d-%s-ERL", job_id, nodo);
+	string_append_with_format(&archivo_rl_temp, "/tmp/J%d-%s-r-local", job_id, nodo);
 
-	t_yama_estado_bloque * estado_bloque;
 	int index = 0;
 	while (index < (tabla_de_estados->elements_count)) {
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
 		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
 
-			t_red_local * red_local = (t_red_local *) malloc (sizeof(t_red_local));
-			red_local->nodo = string_duplicate((estado_bloque->nodo));
-			red_local->ip_port = string_duplicate((estado_bloque->ip_port));
-			red_local->archivo_temp = string_duplicate((estado_bloque->archivo_temp));
-			red_local->archivo_rl_temp = string_duplicate(archivo_rl_temp);
-			list_add(planificados, red_local);
+			if (!red_local) {
+				red_local = (t_red_local *) malloc (sizeof(t_red_local));
+				red_local->nodo = string_duplicate((estado_bloque->nodo));
+				red_local->ip_puerto = string_duplicate((estado_bloque->ip_puerto));
+				red_local->archivo_rl_temp = string_duplicate(archivo_rl_temp);
+				red_local->archivos_temp = string_new();
+				string_append(&(red_local->archivos_temp), (estado_bloque->archivo_temp));
+			} else {
+				string_append_with_format(&(red_local->archivos_temp), ";%s", (estado_bloque->archivo_temp));
+			}
 
 			estado_bloque->etapa = REDUCCION_LOCAL;
 			estado_bloque->estado = REDUC_LOCAL_EN_PROCESO;
@@ -653,53 +672,292 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 		}
 		index++;
 	}
+	free(archivo_rl_temp);
 
+	list_add(planificados, red_local);
 	yama_planificacion_send_resp(socket_cliente, EXITO, REDUCCION_LOCAL, job_id, planificados);
 
-	free(archivo_rl_temp);
 	list_destroy_and_destroy_elements(planificados, &cierre_rl);
 }
 
 
 
+/**	╔═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+	║                                         REGISTRAR RESULTADO REDUCCION LOCAL                                         ║
+	╚═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝ **/
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void cierre(void * elemento) {
-	free(elemento);
+/**
+ * @NAME registrar_resultado_reduccion_local
+ */
+int registrar_resultado_reduccion_local(int * socket_cliente) {
+	t_yama_reg_resultado_rl_req * req = yama_registrar_resultado_rl_recv_req(socket_cliente, log);
+	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
+		free(req);
+		return CLIENTE_DESCONECTADO;
+	}
+	registrar_resultado_rl(socket_cliente, (req->job_id), (req->nodo), (req->resultado_rl));
+	if ((req->resultado_rl) == REDUC_LOCAL_OK)
+		chequear_inicio_reduccion_global(socket_cliente, (req->job_id));
+	free(req->nodo);
+	free(req);
+	return EXITO;
 }
 
+/**
+ * @NAME registrar_resultado_rl
+ */
+void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int resultado) {
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+
+			if ((estado_bloque->etapa) == FINALIZADO_ERROR) {
+
+				// el job finalizo antes,
+				// por un error previo de alguna reduccion local realizada en otro nodo para el mismo job
+				// reducir carga nodo, por cada transformación incluida en la reduccion local
+				reducir_carga_nodo_rl(job_id, nodo);
+
+			} else if ((estado_bloque->etapa) == REDUCCION_LOCAL) {
+				if (resultado == REDUC_LOCAL_ERROR) {
+					// reduccion local con error, no hay replanificacion
+					reducir_carga_nodo_rl(job_id, nodo);
+					registrar_error_job(job_id);
+					yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
+				} else if (resultado == TRANSF_OK) {
+					estado_bloque->estado = resultado;
+				}
+			}
+			return;
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME chequear_inicio_reduccion_global
+ */
+void chequear_inicio_reduccion_global(int * socket_cliente, int job_id) {
+	bool planificar_rg = true;
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if ((estado_bloque->job_id) == job_id) {
+			if (((estado_bloque->etapa) != REDUCCION_LOCAL) && ((estado_bloque->estado) != REDUC_LOCAL_OK)) {
+				planificar_rg = false;
+				break;
+			}
+		}
+		index++;
+	}
+
+	if (planificar_rg)
+		planificar_etapa_reduccion_global(socket_cliente, job_id);
+}
+
+/**
+ * @NAME planificar_etapa_reduccion_global
+ */
+void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
+
+	t_yama_estado_bloque * estado_bloque;
+	t_yama_estado_bloque * estado_nodo_designado;
+	t_yama_carga_nodo * carga_nodo;
+	t_yama_carga_nodo * carga_nodo_designado;
+
+	int cant_red_temp = 0;
+	int i = 0;
+	int j;
+	while (i < (carga_nodos->elements_count)) {
+		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, i);
+		j = 0;
+		while (j < (tabla_de_estados->elements_count)) {
+			estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, j);
+			if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), (carga_nodo->nodo)) == 0)) {
+				cant_red_temp++;
+				if ((!carga_nodo_designado) || ((carga_nodo->wl) < (carga_nodo_designado->wl))) {
+					carga_nodo_designado = carga_nodo;
+					estado_nodo_designado = estado_bloque;
+				}
+				break;
+			}
+			j++;
+		}
+		i++;
+	}
+
+	int carga = (cant_red_temp / 2) + (((cant_red_temp % 2) > 0) ? 1 : 0);
+	(carga_nodo_designado->wl) += carga;
+	(carga_nodo_designado->wl_total) += carga;
+
+	char * archivo_rg = string_new();
+	string_append_with_format(&archivo_rg, "/tmp/J%d-final", job_id);
+
+	t_list * planificados = list_create();
+	t_red_global * red_global;
+
+	i = 0;
+	while (i < (carga_nodos->elements_count)) {
+		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, i);
+		j = 0;
+		while (j < (tabla_de_estados->elements_count)) {
+			estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, j);
+			if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), (carga_nodo->nodo)) == 0)) {
+
+				red_global = (t_red_global *) malloc(sizeof(t_red_global));
+				red_global->nodo = string_duplicate(estado_bloque->nodo);
+				red_global->ip_puerto = string_duplicate(estado_bloque->ip_puerto);
+				red_global->archivo_rl_temp = string_duplicate(estado_bloque->archivo_rl_temp);
+
+				if (strcmp((estado_bloque->nodo), (estado_nodo_designado->nodo)) == 0) {
+					red_global->designado = true;
+					red_global->archivo_rg = string_duplicate(archivo_rg);
+				} else {
+					red_global->designado = false;
+					red_global->archivo_rg = string_new();
+				}
+
+				list_add(planificados, red_global);
+				break;
+			}
+			j++;
+		}
+		i++;
+	}
+
+	i = 0;
+	while (i < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, j);
+		if ((estado_bloque->job_id) == job_id) {
+			estado_bloque->etapa = REDUCCION_GLOBAL;
+			estado_bloque->estado = REDUC_GLOBAL_EN_PROCESO;
+			if (strcmp((estado_bloque->nodo), (estado_nodo_designado->nodo)) == 0) {
+				estado_bloque->designado = true;
+				estado_bloque->archivo_rg = string_duplicate(archivo_rg);
+			} else {
+				estado_bloque->designado = false;
+				estado_bloque->archivo_rg = string_new();
+			}
+		}
+		i++;
+	}
+
+	free(archivo_rg);
+	yama_planificacion_send_resp(socket_cliente, EXITO, REDUCCION_GLOBAL, job_id, planificados);
+	list_destroy_and_destroy_elements(planificados, &cierre_rg);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * @NAME reducir_carga_nodo
+ */
+void reducir_carga_nodo(char * nodo) {
+	t_yama_carga_nodo * carga_nodo;
+	int j = 0;
+	while (j < (carga_nodos->elements_count)) {
+		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, j);
+		if (strcmp((carga_nodo->nodo), nodo) == 0) {
+			(carga_nodo->wl)--;
+			return;
+		}
+		j++;
+	}
+}
+
+/**
+ * @NAME reducir_carga_nodo_rl
+ */
+void reducir_carga_nodo_rl(int job_id, char * nodo) {
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+			reducir_carga_nodo(estado_bloque->nodo);
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME registrar_error_job
+ */
+void registrar_error_job(int job_id) {
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if ((estado_bloque->job_id) == job_id)
+			estado_bloque->etapa = FINALIZADO_ERROR;
+		index++;
+	}
+}
+
+/**
+ * @NAME cierre_bamd
+ */
+void cierre_bamd(t_fs_file_block_metadata * bloque_achivo_md) {
+	list_destroy_and_destroy_elements((bloque_achivo_md->copies_list), &cierre_cmd);
+	free(bloque_achivo_md);
+}
+
+/**
+ * @NAME cierre_cmd
+ */
+void cierre_cmd(t_fs_copy_block * copia_md) {
+	free(copia_md->node);
+	free(copia_md->ip_port);
+	free(copia_md);
+}
+
+/**
+ * @NAME cierre_t
+ */
 void cierre_t(t_transformacion * transformacion) {
 	free(transformacion->nodo);
-	free(transformacion->ip_port);
+	free(transformacion->ip_puerto);
 	free(transformacion->archivo_temporal);
 	free(transformacion);
 }
 
+/**
+ * @NAME cierre_rl
+ */
 void cierre_rl(t_red_local * rl) {
 	free(rl->nodo);
-	free(rl->ip_port);
-	free(rl->archivo_temp);
+	free(rl->ip_puerto);
 	free(rl->archivo_rl_temp);
+	free(rl->archivos_temp);
 	free(rl);
 }
 
-
+/**
+ * @NAME cierre_rg
+ */
+void cierre_rg(t_red_global * rg) {
+	free(rg->nodo);
+	free(rg->ip_puerto);
+	free(rg->archivo_rl_temp);
+	free(rg->archivo_rg);
+	free(rg);
+}
