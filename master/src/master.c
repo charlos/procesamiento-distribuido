@@ -120,10 +120,12 @@ struct_file * read_file(char * path) {
 	file = fopen(path, "r");
 
 	if (file) {
-		fstat(file, &st);
-		size_t size = st.st_size;
+//		fstat(file, &st);
+		fseek(file, 0L, SEEK_END);
+		size_t size = ftell(file); // st.st_size;
+		fseek(file, 0L, SEEK_SET);
 		struct_file * file_struct = malloc(sizeof(struct_file));
-		file_struct->filesize = st.st_size;
+		file_struct->filesize = size;
 		file_struct->file = malloc(file_struct->filesize);
 
 		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
