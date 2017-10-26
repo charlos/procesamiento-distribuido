@@ -53,11 +53,15 @@ master_cfg * crear_config();
 
 struct_file * read_file(char * path);
 void atender_respuesta_transform(respuesta_yama_transform * resp);
-int atender_respuesta_reduccion(void * resp);
+void atender_respuesta_reduccion(t_red_local * respuesta);
 pedido_master * crear_pedido_yama(char ** argv);
 void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta);
+void liberar_respuesta_reduccion_local(t_red_local *respuesta);
 void liberar_combo_ip(ip_port_combo *combo);
 void crear_hilo_transformador(t_transformacion *transformacion, int job_id);
+void crear_hilo_reduccion_local(t_red_local *reduccion);
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
+void atender_solicitud(t_yama_planificacion_resp *solicitud);
+
 
 #endif /* MASTER_H_ */

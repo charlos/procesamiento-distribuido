@@ -10,6 +10,8 @@
 
 #include "master.h"
 
+pedido_master * pedido;
+int job_id;
 int main(int argc, char ** argv) {
 
 	if (argc != 5) {
@@ -19,7 +21,7 @@ int main(int argc, char ** argv) {
 	}
 
 	master_config = crear_config();
-	pedido_master * pedido = crear_pedido_yama(argv);
+	pedido = crear_pedido_yama(argv);
 	transformador_file = read_file(pedido->ruta_trans);
 
 	yama_socket = connect_to_socket(master_config->ip_yama,
@@ -27,7 +29,7 @@ int main(int argc, char ** argv) {
 
 	// Enviar Pedido a YAMA
 	t_yama_planificacion_resp * respuesta_solicitud = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
-
+	job_id = respuesta_solicitud->job_id;
 	// RECV LOOP
 	while(respuesta_solicitud->exec_code != ERROR && respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO) {
 		atender_solicitud(respuesta_solicitud);
@@ -90,13 +92,24 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	int status = transform_res_recv(&socket_worker, result);
 
 
-	yama_resultado_transf_bloque(yama_socket, respuesta->job, &respuesta->nodo, respuesta->bloque, result->resultado, logger);
+	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, result->resultado, logger);
 //	status = yama_transform_res_send(&yama_socket, resultado);
 	liberar_respuesta_transformacion(respuesta);
 	liberar_combo_ip(combo);
 	free(result);
 }
-int atender_respuesta_reduccion(void * resp) {
+void atender_respuesta_reduccion(t_red_local * respuesta) {
+
+	ip_port_combo * combo = split_ipport(respuesta->ip_puerto);
+	int socket_worker = connect_to_socket(combo->ip, combo->port);
+
+	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
+	local_reduction_req_send(socket_worker, respuesta->archivo_rl_temp, respuesta->archivos_temp, script_reduccion->filesize, script_reduccion->file, logger);
+	liberar_respuesta_reduccion_local(respuesta);
+	liberar_combo_ip(combo);
+
+	free(script_reduccion->file);
+	free(script_reduccion);
 
 }
 struct_file * read_file(char * path) {
@@ -116,6 +129,7 @@ struct_file * read_file(char * path) {
 		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
 				file, 0);
 
+		return file_struct;
 	}
 	return NULL;
 }
@@ -124,6 +138,14 @@ void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta){
 	free(respuesta->archivo_temporal);
 	free(respuesta->ip_port);
 	free(respuesta->nodo);
+	free(respuesta);
+}
+
+void liberar_respuesta_reduccion_local(t_red_local *respuesta){
+	free(respuesta->archivo_rl_temp);
+	free(respuesta->archivos_temp);
+	free(respuesta->nodo);
+	free(respuesta->ip_puerto);
 	free(respuesta);
 }
 
@@ -146,12 +168,21 @@ void crear_hilo_transformador(t_transformacion *transformacion, int job_id){
 	pthread_attr_destroy(&attr);
 }
 
+void crear_hilo_reduccion_local(t_red_local *reduccion){
+	pthread_t hilo_solicitud;
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&hilo_solicitud, &attr, &atender_respuesta_reduccion, reduccion);
+	pthread_attr_destroy(&attr);
+
+}
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
 	respuesta_yama_transform *transformacion_master = malloc(sizeof(respuesta_yama_transform));
 	transformacion_master->archivo_temporal = transformacion_yama->archivo_temporal;
 	transformacion_master->bloque = transformacion_yama->bloque;
 	transformacion_master->bytes_ocupados = transformacion_yama->bytes_ocupados;
-	transformacion_master->ip_port = transformacion_yama->ip_port;
+	transformacion_master->ip_port = transformacion_yama->ip_puerto;
 	transformacion_master->nodo = transformacion_yama->nodo;
 
 	return transformacion_master;
@@ -165,14 +196,20 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
 
 			t_transformacion * transformacion = (t_transformacion *) list_get(solicitud->planificados, i);
-			crear_hilo_transformador(transformacion, solicitud->job_id);
+			crear_hilo_transformador(transformacion, job_id);
 		}
 		break;
-	case REPLANIFICACION:
+
 	case REDUCCION_LOCAL:
+		for(i = 0; i < list_size(solicitud->planificados); i++) {
+			t_red_local *reduccion = list_get(solicitud->planificados, i);
+			crear_hilo_reduccion_local(reduccion);
+		}
+		break;
 	case REDUCCION_GLOBAL:
 	default:
 		// Todavia nose
+		printf("default");
 	}
 	// cada hilo tiene que liberar los atributos internos de su solicitud
 	free(solicitud);
