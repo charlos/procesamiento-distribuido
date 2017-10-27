@@ -42,4 +42,9 @@ typedef struct {
 	uint32_t wl_total;
 } t_yama_carga_nodo;
 
+typedef struct {
+	uint32_t job_id;
+	t_list * cargas;
+} t_yama_carga_job;
+
 #endif /* YAMA_H_ */

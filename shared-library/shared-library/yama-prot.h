@@ -10,33 +10,40 @@
 #define NUEVA_SOLICITUD         		   1
 #define REGISTRAR_RES_TRANSF_BLOQUE    	   2
 #define REGISTRAR_RES_REDUCCION_LOCAL      3
+#define REGISTRAR_RES_REDUCCION_GLOBAL     4
+#define REGISTRAR_RES_ALMACENAMIENTO       5
 
 // ETAPAS JOBS
 #define TRANSFORMACION         		  	   1
 #define REDUCCION_LOCAL          	   	   2
 #define REDUCCION_GLOBAL   	           	   3
-#define FINALIZADO_OK		           	   4
-#define FINALIZADO_ERROR		   	       5
+#define ALMACENAMIENTO   	           	   4
+#define FINALIZADO_OK		           	   5
+#define FINALIZADO_ERROR		   	       6
 
 // ESTADOS BLOQUES (TRANSFORMACION)
 #define TRANSF_EN_PROCESO			  	   1
 #define TRANSF_OK 	  		   	   		   2
 #define TRANSF_ERROR             		   3
 #define TRANSF_ERROR_SIN_NODOS_DISP        4
-
-// ESTADOS NODOS (REDUCCION LOCAL Y REDUCCION GLOBAL)
 #define REDUC_LOCAL_EN_PROCESO			   5
 #define REDUC_LOCAL_OK 	  		   	   	   6
 #define REDUC_LOCAL_ERROR             	   7
 #define REDUC_GLOBAL_EN_PROCESO			   8
 #define REDUC_GLOBAL_OK 	  		   	   9
 #define REDUC_GLOBAL_ERROR             	  10
+#define ALMACENAMIENTO_EN_PROCESO		  11
+#define ALMACENAMIENTO_OK 	  		   	  12
+#define ALMACENAMIENTO_ERROR              13
 
 // CODIGOS DE RESPUESTAS
 #define	EXITO      				  	       1
 #define	ERROR							-200
 #define	CLIENTE_DESCONECTADO		  	-201
 #define	SERVIDOR_DESCONECTADO		   	-202
+
+#define	RESP_REDUCCION_LOCAL   			 'l'
+#define	RESP_REDUCCION_GLOBAL		   	 'g'
 
 /**
  * @NAME yama_recv_cod_operacion
@@ -120,22 +127,22 @@ typedef struct {
 	int16_t exec_code;
 	uint32_t job_id;
 	char * nodo;
-	uint8_t resultado_rl;
-} t_yama_reg_resultado_rl_req;
+	uint8_t resultado;
+} t_yama_reg_resultado_red_req;
 
 /**
- * @NAME yama_registrar_resultado_reduccion_local
+ * @NAME yama_registrar_resultado_reduccion
  * @DESC
  *
  */
-void yama_registrar_resultado_reduccion_local(int, int, char *, int, t_log *);
+void yama_registrar_resultado_reduccion(int, int, char *, char, int, t_log *);
 
 /**
- * @NAME yama_registrar_resultado_rl_recv_req
+ * @NAME yama_registrar_resultado_r_recv_req
  * @DESC
  *
  */
-t_yama_reg_resultado_rl_req * yama_registrar_resultado_rl_recv_req(int *, t_log *);
+t_yama_reg_resultado_red_req * yama_registrar_resultado_r_recv_req(int *, t_log *);
 
 /**
  * @NAME yama_resp_planificacion

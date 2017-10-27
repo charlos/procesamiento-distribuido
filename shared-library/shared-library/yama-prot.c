@@ -166,11 +166,11 @@ t_yama_reg_resultado_t_req * yama_registrar_resultado_t_recv_req(int * socket_cl
 }
 
 
-/**	╔═════════════════════════════════════╗
-	║ REGISTRAR RESULTADO REDUCCION LOCAL ║
-	╚═════════════════════════════════════╝ **/
+/**	╔════════════════════════════════════════════════╗
+	║ REGISTRAR RESULTADO REDUCCION (LOCAL O GLOBAL) ║
+	╚════════════════════════════════════════════════╝ **/
 
-void yama_registrar_resultado_reduccion_local(int socket_servidor, int job_id, char * nodo, int cod_resultado_rl, t_log * log) {
+void yama_registrar_resultado_reduccion(int socket_servidor, int job_id, char * nodo, char tipo, int cod_resultado_red, t_log * log) {
 
 	/**	╔════════════════════════╦══════════════════╦═════════════════════╦══════╦═══════════════════════════╗
 		║ cod operacion (1 byte) ║ job id (4 bytes) ║ nodo size (4 bytes) ║ nodo ║ cod resultado rl (1 byte) ║
@@ -179,28 +179,28 @@ void yama_registrar_resultado_reduccion_local(int socket_servidor, int job_id, c
 	uint8_t prot_cod_operacion = 1;
 	uint8_t prot_job_id = 4;
 	uint8_t prot_nodo_size = 4;
-	uint8_t prot_cod_resultado_rl = 1;
+	uint8_t prot_cod_resultado_red = 1;
 
-	uint8_t req_cod_operacion = REGISTRAR_RES_REDUCCION_LOCAL;
+	uint8_t req_cod_operacion = ((tipo == RESP_REDUCCION_LOCAL) ? REGISTRAR_RES_REDUCCION_LOCAL : REGISTRAR_RES_REDUCCION_GLOBAL);
 	uint32_t req_job_id = job_id;
 	uint32_t req_nodo_size = strlen(nodo) + 1;
-	int8_t req_resultado_rl = cod_resultado_rl;
+	int8_t req_resultado_red = cod_resultado_red;
 
-	int msg_size = sizeof(char) * (prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_cod_resultado_rl);
+	int msg_size = sizeof(char) * (prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size + prot_cod_resultado_red);
 	void * request = malloc(msg_size);
 	memcpy(request, &req_cod_operacion, prot_cod_operacion);
 	memcpy(request + prot_cod_operacion, &req_job_id, prot_job_id);
 	memcpy(request + prot_cod_operacion + prot_job_id, &req_nodo_size, prot_nodo_size);
 	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size, nodo, req_nodo_size);
-	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size, &req_resultado_rl, prot_cod_resultado_rl);
+	memcpy(request + prot_cod_operacion + prot_job_id + prot_nodo_size + req_nodo_size, &req_resultado_red, prot_cod_resultado_red);
 	socket_send(&socket_servidor, request, msg_size, 0);
 	free(request);
 
 }
 
-t_yama_reg_resultado_rl_req * yama_registrar_resultado_rl_recv_req(int * socket_cliente, t_log * log) {
+t_yama_reg_resultado_red_req * yama_registrar_resultado_r_recv_req(int * socket_cliente, t_log * log) {
 
-	t_yama_reg_resultado_rl_req * request = malloc(sizeof(t_yama_reg_resultado_rl_req));
+	t_yama_reg_resultado_red_req * request = malloc(sizeof(t_yama_reg_resultado_red_req));
 
 	uint8_t prot_job_id = 4;
 	int bytes_recv = socket_recv(socket_cliente, &(request->job_id), prot_job_id);
@@ -227,8 +227,8 @@ t_yama_reg_resultado_rl_req * yama_registrar_resultado_rl_recv_req(int * socket_
 		return request;
 	}
 
-	uint8_t prot_cod_resultado_rl = 1;
-	bytes_recv = socket_recv(socket_cliente, &(request->resultado_rl), prot_cod_resultado_rl);
+	uint8_t prot_cod_resultado_red = 1;
+	bytes_recv = socket_recv(socket_cliente, &(request->resultado), prot_cod_resultado_red);
 	if (bytes_recv <= 0) {
 		free(request->nodo);
 		if (log) log_error(log, "------ CLIENTE %d >> desconectado", * socket_cliente);

@@ -17,6 +17,7 @@ int algoritmo;
 
 int clock;
 t_list * carga_nodos;
+t_list * carga_jobs;
 t_list * tabla_de_estados;
 
 #define	SOCKET_BACKLOG 						20
@@ -26,19 +27,23 @@ t_list * tabla_de_estados;
 void registrar_resultado_t_bloque(int *, int, char *, int, int);
 void registrar_resultado_rl(int *, int, char *, int);
 void registrar_error_job(int);
-void reducir_carga_nodo(char *);
-void reducir_carga_nodo_rl(int, char *);
+void reducir_carga_nodo(char *, int);
+void reducir_carga_job(int, char *, int);
 void recibir_solicitudes_master(void);
 void procesar_nueva_solicitud(int *, char *);
 void posicionar_clock(void);
 void planificar_etapa_reduccion_local_nodo(int *, int, char *);
 void planificar_etapa_reduccion_global(int *, int);
+void liberar_cargas_job(int);
+void liberar_carga_job(int, char *);
 void inicio(void);
 void incluir_nodos_para_balanceo(t_fs_metadata_file *);
+void incluir_carga_job(int, char *);
 void crear_log(void);
 void cierre_t(t_transformacion *);
 void cierre_rl(t_red_local *);
 void cierre_rg(t_red_global *);
+void cierre_cn(t_yama_carga_nodo *);
 void cierre_cmd(t_fs_copy_block *);
 void cierre_bamd(t_fs_file_block_metadata *);
 void chequear_inicio_reduccion_local(int *, int, char *);
@@ -46,10 +51,13 @@ void chequear_inicio_reduccion_global(int *, int);
 void cargar_configuracion(void);
 void calcular_disponibilidad_nodos(void);
 void balanceo_de_carga(t_fs_file_block_metadata *, t_list *);
+void aumentar_carga_nodo(char *, int);
+void aumentar_carga_job(int, char *, int);
 t_list * planificar_etapa_transformacion(t_fs_metadata_file *);
 int registrar_resultado_transformacion_bloque(int *);
 int registrar_resultado_reduccion_local(int *);
 int pwl(char *);
+int obtener_carga_job(int, char *);
 int nueva_solicitud(int *);
 int disponibilidad(char *);
 int balanceo_de_carga_replanificacion(int, t_list *);
@@ -103,6 +111,7 @@ void crear_log(void) {
 void inicio(void) {
 	tabla_de_estados = list_create();
 	carga_nodos = list_create();
+	carga_jobs = list_create();
 	algoritmo = (strcmp((yama_conf->algoritmo), "CLOCK") == 0) ? CLOCK : WCLOCK;
 }
 
@@ -164,6 +173,9 @@ int atender_solicitud_master(int * socket_cliente) {
 	case REGISTRAR_RES_REDUCCION_LOCAL:
 		// TODO
 		break;
+	case REGISTRAR_RES_REDUCCION_GLOBAL:
+		// TODO
+		break;
 	default:;
 	}
 	return atsm;
@@ -208,7 +220,6 @@ void procesar_nueva_solicitud(int * socket_cliente, char * archivo) {
 
 		t_list * planificados = planificar_etapa_transformacion(metadata);
 		yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, new_job_id, planificados);
-
 
 		list_destroy_and_destroy_elements(planificados, &cierre_t);
 		list_destroy_and_destroy_elements((metadata->block_list), &cierre_bamd);
@@ -415,9 +426,9 @@ void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * pl
 
 				free(archivo_temp);
 
-				(carga_nodo->wl)++;
-				(carga_nodo->wl_total)++;
 				(carga_nodo->disponibilidad)--;
+				incluir_carga_job(new_job_id, (copia->nodo));
+				aumentar_carga_job(new_job_id,(copia->nodo), 1);
 
 				clock_aux++; // avanzo clock
 				if (clock_aux >= (carga_nodos->elements_count))
@@ -485,15 +496,16 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
 		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0) && ((estado_bloque->bloque_nodo) == bloque)) {
 			if ((estado_bloque->etapa) == FINALIZADO_ERROR)	 {
-				// el job finalizo antes, por un error previo
-				// perteneciente a otra transformacion perteneciente al mismo job
-				reducir_carga_nodo(nodo);
+				// el job finalizo antes,
+				// error previo en otra transformacion perteneciente al mismo job
+				reducir_carga_job(job_id, nodo, 1);
 			} else if ((estado_bloque->etapa) == TRANSFORMACION) {
 				if (resultado == TRANSF_ERROR) {
 					// replanificacion transformacion
-					reducir_carga_nodo(nodo);
+					reducir_carga_job(job_id, nodo, 1);
 					t_list * planificados = list_create();
-					if (balanceo_de_carga_replanificacion(index, planificados) == EXITO) {
+					int bcr = balanceo_de_carga_replanificacion(index, planificados);
+					if (bcr == EXITO) {
 						yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, job_id, planificados);
 					} else {
 						registrar_error_job(job_id);
@@ -576,9 +588,9 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 
 				free(archivo_temp);
 
-				(carga_nodo->wl)++;
-				(carga_nodo->wl_total)++;
 				(carga_nodo->disponibilidad)--;
+				incluir_carga_job((estado_bloque->job_id),(copia->nodo));
+				aumentar_carga_job((estado_bloque->job_id),(copia->nodo), 1);
 
 				clock_aux++; // avanzo clock
 				if (clock_aux >= (carga_nodos->elements_count))
@@ -661,6 +673,7 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 				red_local->archivo_rl_temp = string_duplicate(archivo_rl_temp);
 				red_local->archivos_temp = string_new();
 				string_append(&(red_local->archivos_temp), (estado_bloque->archivo_temp));
+				aumentar_carga_job(job_id, nodo, 1);
 			} else {
 				string_append_with_format(&(red_local->archivos_temp), ";%s", (estado_bloque->archivo_temp));
 			}
@@ -690,13 +703,13 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
  * @NAME registrar_resultado_reduccion_local
  */
 int registrar_resultado_reduccion_local(int * socket_cliente) {
-	t_yama_reg_resultado_rl_req * req = yama_registrar_resultado_rl_recv_req(socket_cliente, log);
+	t_yama_reg_resultado_red_req * req = yama_registrar_resultado_r_recv_req(socket_cliente, log);
 	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
 		free(req);
 		return CLIENTE_DESCONECTADO;
 	}
-	registrar_resultado_rl(socket_cliente, (req->job_id), (req->nodo), (req->resultado_rl));
-	if ((req->resultado_rl) == REDUC_LOCAL_OK)
+	registrar_resultado_rl(socket_cliente, (req->job_id), (req->nodo), (req->resultado));
+	if ((req->resultado) == REDUC_LOCAL_OK)
 		chequear_inicio_reduccion_global(socket_cliente, (req->job_id));
 	free(req->nodo);
 	free(req);
@@ -714,16 +727,13 @@ void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int r
 		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
 
 			if ((estado_bloque->etapa) == FINALIZADO_ERROR) {
-
-				// el job finalizo antes,
-				// por un error previo de alguna reduccion local realizada en otro nodo para el mismo job
-				// reducir carga nodo, por cada transformación incluida en la reduccion local
-				reducir_carga_nodo_rl(job_id, nodo);
-
+				// el job finalizo antes
+				// error previo en reduccion local realizada en otro nodo para el mismo job
+				liberar_carga_job(job_id, nodo);
 			} else if ((estado_bloque->etapa) == REDUCCION_LOCAL) {
 				if (resultado == REDUC_LOCAL_ERROR) {
 					// reduccion local con error, no hay replanificacion
-					reducir_carga_nodo_rl(job_id, nodo);
+					liberar_carga_job(job_id, nodo);
 					registrar_error_job(job_id);
 					yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 				} else if (resultado == TRANSF_OK) {
@@ -789,9 +799,7 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 		i++;
 	}
 
-	int carga = (cant_red_temp / 2) + (((cant_red_temp % 2) > 0) ? 1 : 0);
-	(carga_nodo_designado->wl) += carga;
-	(carga_nodo_designado->wl_total) += carga;
+	aumentar_carga_job(job_id, (carga_nodo_designado->nodo), ((cant_red_temp / 2) + (((cant_red_temp % 2) > 0) ? 1 : 0)));
 
 	char * archivo_rg = string_new();
 	string_append_with_format(&archivo_rg, "/tmp/J%d-final", job_id);
@@ -868,32 +876,242 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
- * @NAME reducir_carga_nodo
+ * @NAME incluir_carga_job
  */
-void reducir_carga_nodo(char * nodo) {
+void incluir_carga_job(int job_id, char * nodo) {
+	bool existe_job = false;
+	bool existe_nodo = false;
+	t_yama_carga_job * carga_job;
 	t_yama_carga_nodo * carga_nodo;
-	int j = 0;
-	while (j < (carga_nodos->elements_count)) {
-		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, j);
-		if (strcmp((carga_nodo->nodo), nodo) == 0) {
-			(carga_nodo->wl)--;
-			return;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			existe_job = true;
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				if (strcmp((carga_nodo->nodo), nodo) == 0) {
+					existe_nodo = true;
+					break;
+				}
+				j++;
+			}
+			break;
 		}
-		j++;
+		i++;
+	}
+	if (!existe_job) {
+		carga_job = (t_yama_carga_job *) malloc(sizeof(t_yama_carga_job));
+		carga_job->job_id = job_id;
+		carga_job->cargas = list_create();
+		list_add(carga_jobs, carga_job);
+	} else {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+	}
+	if (!existe_nodo) {
+		carga_nodo = (t_yama_carga_nodo *) malloc(sizeof(t_yama_carga_nodo));
+		carga_nodo->disponibilidad = 0;
+		carga_nodo->nodo = string_duplicate(nodo);
+		carga_nodo->wl = 0;
+		carga_nodo->wl_total = 0;
+		list_add((carga_job->cargas), carga_nodo);
 	}
 }
 
 /**
- * @NAME reducir_carga_nodo_rl
+ * @NAME aumentar_carga_job
  */
-void reducir_carga_nodo_rl(int job_id, char * nodo) {
-	t_yama_estado_bloque * estado_bloque;
+void aumentar_carga_job(int job_id, char * nodo, int carga) {
+	t_yama_carga_job * carga_job;
+	t_yama_carga_nodo * carga_nodo;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				if (strcmp((carga_nodo->nodo), nodo) == 0) {
+					aumentar_carga_nodo(nodo, carga);
+					carga_nodo->wl += carga;
+					return;
+				}
+				j++;
+			}
+			break;
+		}
+		i++;
+	}
+}
+
+/**
+ * @NAME reducir_carga_job
+ */
+void reducir_carga_job(int job_id, char * nodo, int carga) {
+	t_yama_carga_job * carga_job;
+	t_yama_carga_nodo * carga_nodo;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				if (strcmp((carga_nodo->nodo), nodo) == 0) {
+					reducir_carga_nodo(nodo, carga);
+					carga_nodo->wl -= carga;
+					return;
+				}
+				j++;
+			}
+			break;
+		}
+		i++;
+	}
+}
+
+/**
+ * @NAME obtener_cargar_job
+ */
+int obtener_carga_job(int job_id, char * nodo) {
+	t_yama_carga_job * carga_job;
+	t_yama_carga_nodo * carga_nodo;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				if (strcmp((carga_nodo->nodo), nodo) == 0) {
+					return (carga_nodo->wl);
+				}
+				j++;
+			}
+			break;
+		}
+		i++;
+	}
+	return 0;
+}
+
+/**
+ * @NAME liberar_carga_job
+ */
+void liberar_carga_job(int job_id, char * nodo) {
+	t_yama_carga_job * carga_job;
+	t_yama_carga_nodo * carga_nodo;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				if (strcmp((carga_nodo->nodo), nodo) == 0) {
+					carga_nodo = (t_yama_carga_job *) list_remove(cargas, j);
+					reducir_carga_nodo((carga_nodo->nodo), (carga_nodo->wl));
+					free(carga_nodo->nodo);
+					free(carga_nodo);
+					return;
+				}
+				j++;
+			}
+			break;
+		}
+		i++;
+	}
+}
+
+/**
+ * @NAME liberar_cargas_job
+ */
+void liberar_cargas_job(int job_id) {
+	t_yama_carga_job * carga_job;
+	t_yama_carga_nodo * carga_nodo;
+	int i = 0;
+	int j;
+	while (i < (carga_jobs->elements_count)) {
+		carga_job = (t_yama_carga_job *) list_get(carga_jobs, i);
+		if (carga_job->job_id == job_id) {
+			carga_job = (t_yama_carga_job *) list_remove(carga_jobs, i);
+			t_list * cargas = (carga_job->cargas);
+			j = 0;
+			while (j < (cargas->elements_count)) {
+				carga_nodo = (t_yama_carga_nodo *) list_get(cargas, j);
+				reducir_carga_nodo((carga_nodo->nodo), (carga_nodo->wl));
+				j++;
+			}
+			list_destroy_and_destroy_elements(cargas, &cierre_cn);
+			free(carga_job);
+			return;
+		}
+		i++;
+	}
+}
+
+/**
+ * @NAME aumentar_carga_nodo
+ */
+void aumentar_carga_nodo(char * nodo, int carga) {
+	t_yama_carga_nodo * carga_nodo;
 	int index = 0;
-	while (index < (tabla_de_estados->elements_count)) {
-		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
-		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
-			reducir_carga_nodo(estado_bloque->nodo);
+	while (index < (carga_nodos->elements_count)) {
+		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
+		if (strcmp((carga_nodo->nodo), nodo) == 0) {
+			(carga_nodo->wl) += carga;
+			(carga_nodo->wl_total) += carga;
+			return;
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME reducir_carga_nodo
+ */
+void reducir_carga_nodo(char * nodo, int carga) {
+	t_yama_carga_nodo * carga_nodo;
+	int index = 0;
+	while (index < (carga_nodos->elements_count)) {
+		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
+		if (strcmp((carga_nodo->nodo), nodo) == 0) {
+			(carga_nodo->wl) -= carga;
+			return;
 		}
 		index++;
 	}
@@ -960,4 +1178,12 @@ void cierre_rg(t_red_global * rg) {
 	free(rg->archivo_rl_temp);
 	free(rg->archivo_rg);
 	free(rg);
+}
+
+/**
+ * @NAME cierre_cn
+ */
+void cierre_cn(t_yama_carga_nodo * cn) {
+	free(cn->nodo);
+	free(cn);
 }
