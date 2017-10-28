@@ -59,8 +59,8 @@ int main(int argc, char ** argv) {
 	printf("ETAPA DE REDUCCION LOCAL\n");
 
 	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
-	int promedio_transformacion = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
-	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
+	int promedio_reduccion_local = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
+	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_local->cant_total_tareas);
 	printf("Cantidad máxima de tareas simultaneas: %d\n", est_reduccion_local->cant_max_tareas_simultaneas);
@@ -69,8 +69,8 @@ int main(int argc, char ** argv) {
 	printf("ETAPA DE REDUCCION GLOBAL\n");
 
 	t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
-	int promedio_transformacion = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
-	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
+	int promedio_reduccion_global = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
+	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_global);
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_global->cant_total_tareas);
 	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_global->cant_fallos_job);
@@ -229,9 +229,9 @@ t_list * inicializar_estadisticas() {
 	t_estadisticas * est_reduccion_local = inicializar_struct_estadisticas(REDUCCION_LOCAL);
 	t_estadisticas * est_reduccion_global = inicializar_struct_estadisticas(REDUCCION_GLOBAL);
 	t_list * lista_estadisticas = list_create();
-	list_add(est_transformacion);
-	list_add(est_reduccion_local);
-	list_add(est_reduccion_global);
+	list_add(lista_estadisticas, est_transformacion);
+	list_add(lista_estadisticas, est_reduccion_local);
+	list_add(lista_estadisticas, est_reduccion_global);
 	return lista_estadisticas;
 }
 int calcular_promedio(t_list * lista_promedios) {
