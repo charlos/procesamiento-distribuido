@@ -44,6 +44,7 @@
 
 #define	RESP_REDUCCION_LOCAL   			 'l'
 #define	RESP_REDUCCION_GLOBAL		   	 'g'
+#define	RESP_ALMACENAMIENTO		   	     'a'
 
 /**
  * @NAME yama_recv_cod_operacion
@@ -79,6 +80,12 @@ typedef struct {
 	uint8_t designado;
 	char * archivo_rg;
 } t_red_global;
+
+typedef struct {
+	char * nodo;
+	char * ip_puerto;
+	char * archivo_rg;
+} t_almacenamiento;
 
 typedef struct {
 	int16_t exec_code;
@@ -128,21 +135,21 @@ typedef struct {
 	uint32_t job_id;
 	char * nodo;
 	uint8_t resultado;
-} t_yama_reg_resultado_red_req;
+} t_yama_reg_resultado_req;
 
 /**
- * @NAME yama_registrar_resultado_reduccion
+ * @NAME yama_registrar_resultado
  * @DESC
  *
  */
-void yama_registrar_resultado_reduccion(int, int, char *, char, int, t_log *);
+void yama_registrar_resultado(int, int, char *, char, int, t_log *);
 
 /**
- * @NAME yama_registrar_resultado_r_recv_req
+ * @NAME yama_registrar_resultado_recv_req
  * @DESC
  *
  */
-t_yama_reg_resultado_red_req * yama_registrar_resultado_r_recv_req(int *, t_log *);
+t_yama_reg_resultado_req * yama_registrar_resultado_recv_req(int *, t_log *);
 
 /**
  * @NAME yama_resp_planificacion

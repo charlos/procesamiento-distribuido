@@ -2,20 +2,23 @@
 #include <commons/collections/list.h>
 #include <commons/config.h>
 #include <commons/log.h>
+#include <pthread.h>
 #include <shared-library/file-system-prot.h>
 #include <shared-library/socket.h>
 #include <shared-library/yama-prot.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "yama.h"
 
 t_yama_conf * yama_conf;
-t_log * log;
+t_log * logger;
 int fs_socket;
 int new_job_id = 0;
 int algoritmo;
+pthread_mutex_t tabla_estados;
 
-int clock;
+int clock_;
 t_list * carga_nodos;
 t_list * carga_jobs;
 t_list * tabla_de_estados;
@@ -24,19 +27,28 @@ t_list * tabla_de_estados;
 #define	CLOCK 								1
 #define	WCLOCK								2
 
+void yama_console(void *);
+void signal_handler(int);
 void registrar_resultado_t_bloque(int *, int, char *, int, int);
 void registrar_resultado_rl(int *, int, char *, int);
+void registrar_resultado_rg(int *, int, char *, int);
+void registrar_resultado_a(int *, int, char *, int);
 void registrar_error_job(int);
 void reducir_carga_nodo(char *, int);
 void reducir_carga_job(int, char *, int);
 void recibir_solicitudes_master(void);
 void procesar_nueva_solicitud(int *, char *);
+void print_etapa(int);
+void print_estado(int);
 void posicionar_clock(void);
 void planificar_etapa_reduccion_local_nodo(int *, int, char *);
 void planificar_etapa_reduccion_global(int *, int);
+void planificar_almacenamiento(int *, int, char *);
 void liberar_cargas_job(int);
 void liberar_carga_job(int, char *);
 void inicio(void);
+void info_job(int);
+void info_job(int);
 void incluir_nodos_para_balanceo(t_fs_metadata_file *);
 void incluir_carga_job(int, char *);
 void crear_log(void);
@@ -46,6 +58,7 @@ void cierre_rg(t_red_global *);
 void cierre_cn(t_yama_carga_nodo *);
 void cierre_cmd(t_fs_copy_block *);
 void cierre_bamd(t_fs_file_block_metadata *);
+void cierre_a(t_almacenamiento *);
 void chequear_inicio_reduccion_local(int *, int, char *);
 void chequear_inicio_reduccion_global(int *, int);
 void cargar_configuracion(void);
@@ -56,26 +69,40 @@ void aumentar_carga_job(int, char *, int);
 t_list * planificar_etapa_transformacion(t_fs_metadata_file *);
 int registrar_resultado_transformacion_bloque(int *);
 int registrar_resultado_reduccion_local(int *);
+int registrar_resultado_reduccion_global(int *);
+int registrar_resultado_almacenamiento(int *);
 int pwl(char *);
 int obtener_carga_job(int, char *);
 int nueva_solicitud(int *);
 int disponibilidad(char *);
 int balanceo_de_carga_replanificacion(int, t_list *);
 int atender_solicitud_master(int *);
+bool is_number(char *);
 
 int main(void) {
+
 	cargar_configuracion();
 	crear_log();
 	inicio();
 
+	signal(SIGUSR1, signal_handler);
+
+	// thread sonsola
+	pthread_attr_t attr;
+	pthread_t thread;
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	pthread_create(&thread, &attr, &yama_console, NULL);
+	pthread_attr_destroy(&attr);
+
 	fs_socket = connect_to_socket((yama_conf->fs_ip), (yama_conf->fs_puerto));
-	int resp = fs_handshake(fs_socket, YAMA, NULL, NULL, NULL, log);
+	int resp = fs_handshake(fs_socket, YAMA, NULL, NULL, NULL, logger);
 	if (resp != SUCCESS) {
-		log_error(log, "error al conectarse a yama-fs");
+		log_error(logger, "error al conectarse a yama-fs");
 		if (resp == UNSTEADY_FS) {
-			log_error(log, "yama-fs no estable");
+			log_error(logger, "yama-fs no estable");
 		} else {
-			log_error(log, "yama-fs cod. error: %d", resp);
+			log_error(logger, "yama-fs cod. error: %d", resp);
 		}
 		exit(EXIT_FAILURE);
 	}
@@ -90,19 +117,20 @@ void cargar_configuracion(void) {
 	t_config * conf = config_create("/home/utnso/yama.cfg");
 	yama_conf = malloc(sizeof(t_yama_conf));
 	yama_conf->puerto = config_get_int_value(conf, "PUERTO");
-	yama_conf->fs_ip = config_get_string_value(conf, "FS_IP");
-	yama_conf->fs_puerto = config_get_string_value(conf, "FS_PUERTO");
+	yama_conf->fs_ip = string_duplicate(config_get_string_value(conf, "FS_IP"));
+	yama_conf->fs_puerto = string_duplicate(config_get_string_value(conf, "FS_PUERTO"));
 	yama_conf->retardo_plan = config_get_int_value(conf, "RETARDO_PLANIFICACION");
-	yama_conf->algoritmo = config_get_string_value(conf, "ALGORITMO_BALANCEO");
+	yama_conf->algoritmo = string_duplicate(config_get_string_value(conf, "ALGORITMO_BALANCEO"));
 	yama_conf->disp_base = config_get_int_value(conf, "DISP_BASE");
-	yama_conf->log = config_get_string_value(conf, "LOG");
+	yama_conf->log = string_duplicate(config_get_string_value(conf, "LOG"));
+	config_destroy(conf);
 }
 
 /**
  * @NAME crear_log
  */
 void crear_log(void) {
-	log = log_create((yama_conf->log), "yama_log", false, LOG_LEVEL_TRACE);
+	logger = log_create((yama_conf->log), "yama_log", true, LOG_LEVEL_TRACE);
 }
 
 /**
@@ -113,6 +141,22 @@ void inicio(void) {
 	carga_nodos = list_create();
 	carga_jobs = list_create();
 	algoritmo = (strcmp((yama_conf->algoritmo), "CLOCK") == 0) ? CLOCK : WCLOCK;
+	pthread_mutex_init(&tabla_estados, NULL);
+}
+
+/**
+ * @NAME signal_handler
+ */
+void signal_handler(int signal) {
+	if (signal == SIGUSR1) {
+		free(yama_conf->fs_ip);
+		free(yama_conf->fs_puerto);
+		free(yama_conf->algoritmo);
+		free(yama_conf->log);
+		free(yama_conf);
+		cargar_configuracion();
+		algoritmo = (strcmp((yama_conf->algoritmo), "CLOCK") == 0) ? CLOCK : WCLOCK;
+	}
 }
 
 /**
@@ -138,9 +182,9 @@ void recibir_solicitudes_master(void) {
 			if (FD_ISSET(fd_seleccionado, &lectura)) {
 				if (fd_seleccionado == listening_socket) {
 					if ((nuevaConexion = accept_connection(listening_socket)) == -1) {
-						log_error(log, "Error al aceptar conexion");
+						log_error(logger, "Error al aceptar conexion");
 					} else {
-						log_trace(log, "Nueva conexion: socket %d", nuevaConexion);
+						log_trace(logger, "Nueva conexion: socket %d", nuevaConexion);
 						FD_SET(nuevaConexion, &master);
 						if (nuevaConexion > set_fd_max) set_fd_max = nuevaConexion;
 					}
@@ -159,7 +203,8 @@ void recibir_solicitudes_master(void) {
  * @NAME atender_solicitud_master
  */
 int atender_solicitud_master(int * socket_cliente) {
-	int cod_operacion = yama_recv_cod_operacion(socket_cliente, log);
+	pthread_mutex_lock(&tabla_estados);
+	int cod_operacion = yama_recv_cod_operacion(socket_cliente, logger);
 	if (cod_operacion == CLIENTE_DESCONECTADO)
 		return CLIENTE_DESCONECTADO;
 	int atsm;
@@ -171,13 +216,17 @@ int atender_solicitud_master(int * socket_cliente) {
 		atsm = registrar_resultado_transformacion_bloque(socket_cliente);
 		break;
 	case REGISTRAR_RES_REDUCCION_LOCAL:
-		// TODO
+		atsm = registrar_resultado_reduccion_local(socket_cliente);
 		break;
 	case REGISTRAR_RES_REDUCCION_GLOBAL:
-		// TODO
+		atsm = registrar_resultado_reduccion_local(socket_cliente);
+		break;
+	case REGISTRAR_RES_ALMACENAMIENTO:
+		atsm = registrar_resultado_almacenamiento(socket_cliente);
 		break;
 	default:;
 	}
+	pthread_mutex_unlock(&tabla_estados);
 	return atsm;
 }
 
@@ -191,7 +240,7 @@ int atender_solicitud_master(int * socket_cliente) {
  * @NAME nueva_solicitud
  */
 int nueva_solicitud(int * socket_cliente) {
-	t_yama_nueva_solicitud_req * req = yama_nueva_solicitud_recv_req(socket_cliente, log);
+	t_yama_nueva_solicitud_req * req = yama_nueva_solicitud_recv_req(socket_cliente, logger);
 	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
 		free(req);
 		return CLIENTE_DESCONECTADO;
@@ -207,12 +256,13 @@ int nueva_solicitud(int * socket_cliente) {
  */
 void procesar_nueva_solicitud(int * socket_cliente, char * archivo) {
 
-	t_fs_get_md_file_resp * resp = fs_get_metadata_file(fs_socket, archivo, log);
+	t_fs_get_md_file_resp * resp = fs_get_metadata_file(fs_socket, archivo, logger);
 
 	if ((resp->exec_code) == EXITO) {
 		t_fs_metadata_file * metadata = (resp->metadata_file);
 
 		new_job_id++;
+		usleep(1000 * (yama_conf->retardo_plan)); // delay planificacion
 
 		incluir_nodos_para_balanceo(metadata);
 		calcular_disponibilidad_nodos();
@@ -337,7 +387,7 @@ void posicionar_clock(void) {
 				|| (((carga_nodo->disponibilidad) == disp_max) && ((carga_nodo->wl_total) < wl_total_min))) {
 			disp_max = (carga_nodo->disponibilidad);
 			wl_total_min = (carga_nodo->wl_total);
-			clock = index;
+			clock_ = index;
 		}
 		index++;
 	}
@@ -386,7 +436,7 @@ void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * pl
 	t_transformacion * transformacion;
 	t_yama_estado_bloque * estado_bloque;
 
-	int clock_aux = clock;
+	int clock_aux = clock_;
 	for (;;) {
 
 		carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, clock_aux);
@@ -442,7 +492,7 @@ void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * pl
 						clock_aux = 0;
 				}
 
-				clock = clock_aux;
+				clock_ = clock_aux;
 				return;
 			}
 			index++;
@@ -452,7 +502,7 @@ void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * pl
 		if (clock_aux >= (carga_nodos->elements_count))
 			clock_aux = 0;
 
-		if (clock_aux == clock) {
+		if (clock_aux == clock_) {
 			index = 0;
 			while (index < (carga_nodos->elements_count)) {
 				carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
@@ -473,7 +523,7 @@ void balanceo_de_carga(t_fs_file_block_metadata * bloque_archivo_md, t_list * pl
  * @NAME registrar_resultado_transformacion_bloque
  */
 int registrar_resultado_transformacion_bloque(int * socket_cliente) {
-	t_yama_reg_resultado_t_req * req = yama_registrar_resultado_t_recv_req(socket_cliente, log);
+	t_yama_reg_resultado_t_req * req = yama_registrar_resultado_t_recv_req(socket_cliente, logger);
 	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
 		free(req);
 		return CLIENTE_DESCONECTADO;
@@ -495,6 +545,7 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 	while (index < (tabla_de_estados->elements_count)) {
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
 		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0) && ((estado_bloque->bloque_nodo) == bloque)) {
+			estado_bloque->estado = resultado;
 			if ((estado_bloque->etapa) == FINALIZADO_ERROR)	 {
 				// el job finalizo antes,
 				// error previo en otra transformacion perteneciente al mismo job
@@ -503,6 +554,7 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 				if (resultado == TRANSF_ERROR) {
 					// replanificacion transformacion
 					reducir_carga_job(job_id, nodo, 1);
+					usleep(1000 * (yama_conf->retardo_plan)); // delay planificacion
 					t_list * planificados = list_create();
 					int bcr = balanceo_de_carga_replanificacion(index, planificados);
 					if (bcr == EXITO) {
@@ -512,8 +564,6 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 						yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 					}
 					list_destroy_and_destroy_elements(planificados, &cierre_t);
-				} else if (resultado == REDUC_LOCAL_OK) {
-					estado_bloque->estado = resultado;
 				}
 			}
 			return;
@@ -547,7 +597,7 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 		return FINALIZADO_ERROR;
 	}
 
-	int clock_aux = clock;
+	int clock_aux = clock_;
 
 	t_yama_carga_nodo * carga_nodo;
 	t_transformacion * transformacion;
@@ -604,7 +654,7 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 					if (clock_aux >= (carga_nodos->elements_count))
 						clock_aux = 0;
 				}
-				clock = clock_aux;
+				clock_ = clock_aux;
 				return EXITO;
 			}
 			index++;
@@ -614,7 +664,7 @@ int balanceo_de_carga_replanificacion(int pos_tabla_estados, t_list * planificad
 		if (clock_aux >= (carga_nodos->elements_count))
 			clock_aux = 0;
 
-		if (clock_aux == clock) {
+		if (clock_aux == clock_) {
 			index = 0;
 			while (index < (carga_nodos->elements_count)) {
 				carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, index);
@@ -644,9 +694,10 @@ void chequear_inicio_reduccion_local(int * socket_cliente, int job_id, char * no
 		index++;
 	}
 
-	if (planificar_rl)
+	if (planificar_rl) {
+		usleep(1000 * (yama_conf->retardo_plan)); // delay planificacion
 		planificar_etapa_reduccion_local_nodo(socket_cliente, job_id, nodo);
-
+	}
 }
 
 /**
@@ -703,7 +754,7 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
  * @NAME registrar_resultado_reduccion_local
  */
 int registrar_resultado_reduccion_local(int * socket_cliente) {
-	t_yama_reg_resultado_red_req * req = yama_registrar_resultado_r_recv_req(socket_cliente, log);
+	t_yama_reg_resultado_req * req = yama_registrar_resultado_recv_req(socket_cliente, logger);
 	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
 		free(req);
 		return CLIENTE_DESCONECTADO;
@@ -720,27 +771,29 @@ int registrar_resultado_reduccion_local(int * socket_cliente) {
  * @NAME registrar_resultado_rl
  */
 void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int resultado) {
+	bool carga_liberada = false;
+	bool error_procesado = false;
 	t_yama_estado_bloque * estado_bloque;
 	int index = 0;
 	while (index < (tabla_de_estados->elements_count)) {
 		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
 		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
-
-			if ((estado_bloque->etapa) == FINALIZADO_ERROR) {
+			estado_bloque->estado = resultado;
+			if (((estado_bloque->etapa) == FINALIZADO_ERROR) && (!carga_liberada)) {
 				// el job finalizo antes
 				// error previo en reduccion local realizada en otro nodo para el mismo job
+				// libero carga en el nodo, solo una vez
 				liberar_carga_job(job_id, nodo);
+				carga_liberada = true;
 			} else if ((estado_bloque->etapa) == REDUCCION_LOCAL) {
-				if (resultado == REDUC_LOCAL_ERROR) {
+				if (resultado == REDUC_LOCAL_ERROR && (!error_procesado)) {
 					// reduccion local con error, no hay replanificacion
 					liberar_carga_job(job_id, nodo);
 					registrar_error_job(job_id);
 					yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
-				} else if (resultado == TRANSF_OK) {
-					estado_bloque->estado = resultado;
+					error_procesado = true;
 				}
 			}
-			return;
 		}
 		index++;
 	}
@@ -764,8 +817,11 @@ void chequear_inicio_reduccion_global(int * socket_cliente, int job_id) {
 		index++;
 	}
 
-	if (planificar_rg)
+	if (planificar_rg) {
+		usleep(1000 * (yama_conf->retardo_plan)); // delay planificacion
 		planificar_etapa_reduccion_global(socket_cliente, job_id);
+	}
+
 }
 
 /**
@@ -860,43 +916,138 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 
 
 
+/**	╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+	║                                         REGISTRAR RESULTADO REDUCCION GLOBAL                                         ║
+	╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝ **/
+
+/**
+ * @NAME registrar_resultado_reduccion_global
+ */
+int registrar_resultado_reduccion_global(int * socket_cliente) {
+	t_yama_reg_resultado_req * req = yama_registrar_resultado_recv_req(socket_cliente, logger);
+	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
+		free(req);
+		return CLIENTE_DESCONECTADO;
+	}
+	registrar_resultado_rg(socket_cliente, (req->job_id), (req->nodo), (req->resultado));
+	if ((req->resultado) == REDUC_GLOBAL_OK) {
+		usleep(1000 * (yama_conf->retardo_plan)); // delay planificacion
+		planificar_almacenamiento(socket_cliente, (req->job_id), (req->nodo));
+	}
+	free(req->nodo);
+	free(req);
+	return EXITO;
+}
+
+/**
+ * @NAME registrar_resultado_rg
+ */
+void registrar_resultado_rg(int * socket_cliente, int job_id, char * nodo, int resultado) {
+	bool error_procesado = false;
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+			estado_bloque->estado = resultado;
+			if ((estado_bloque->etapa) == REDUCCION_GLOBAL) {
+				if ((resultado == REDUC_GLOBAL_ERROR) && (!error_procesado)) {
+					// reduccion global con error, no hay replanificacion
+					liberar_cargas_job(job_id);
+					registrar_error_job(job_id);
+					yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
+					error_procesado = true;
+				}
+			}
+		}
+		index++;
+	}
+}
+
+/**
+ * @NAME planificar_almacenamiento
+ */
+void planificar_almacenamiento(int * socket_cliente, int job_id, char * nodo) {
+
+	t_yama_estado_bloque * estado_bloque;
+	t_list * planificados = list_create();
+	t_almacenamiento * almacenamiento;
+	bool planificado = false;
+
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+			if (!planificado) {
+				almacenamiento = (t_almacenamiento *) malloc (sizeof(t_almacenamiento));
+				almacenamiento->nodo = string_duplicate(estado_bloque->nodo);
+				almacenamiento->ip_puerto = string_duplicate(estado_bloque->ip_puerto);
+				almacenamiento->archivo_rg = string_duplicate(estado_bloque->archivo_rg);
+			}
+			estado_bloque->etapa = ALMACENAMIENTO;
+			estado_bloque->estado = ALMACENAMIENTO_EN_PROCESO;
+		}
+		index++;
+	}
+
+	list_add(planificados, almacenamiento);
+	yama_planificacion_send_resp(socket_cliente, EXITO, ALMACENAMIENTO, job_id, planificados);
+	list_destroy_and_destroy_elements(planificados, &cierre_a);
+}
 
 
 
+/**	╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+	║                                         REGISTRAR RESULTADO ALMACENAMIENTO                                         ║
+	╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝ **/
+
+/**
+ * @NAME registrar_resultado_almacenamiento
+ */
+int registrar_resultado_almacenamiento(int * socket_cliente) {
+	t_yama_reg_resultado_req * req = yama_registrar_resultado_recv_req(socket_cliente, logger);
+	if ((req->exec_code) == CLIENTE_DESCONECTADO) {
+		free(req);
+		return CLIENTE_DESCONECTADO;
+	}
+	registrar_resultado_a(socket_cliente, (req->job_id), (req->nodo), (req->resultado));
+	free(req->nodo);
+	free(req);
+	return EXITO;
+}
+
+/**
+ * @NAME registrar_resultado_a
+ */
+void registrar_resultado_a(int * socket_cliente, int job_id, char * nodo, int resultado) {
+	bool error_procesado = false;
+	t_yama_estado_bloque * estado_bloque;
+	int index = 0;
+	while (index < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, index);
+		if (((estado_bloque->job_id) == job_id) && (strcmp((estado_bloque->nodo), nodo) == 0)) {
+			estado_bloque->estado = resultado;
+			if ((estado_bloque->etapa) == ALMACENAMIENTO) {
+				if ((resultado == ALMACENAMIENTO_ERROR) && (!error_procesado)) {
+					// reduccion global con error, no hay replanificacion
+					liberar_cargas_job(job_id);
+					registrar_error_job(job_id);
+					yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
+					error_procesado = true;
+				} else {
+					estado_bloque->etapa = FINALIZADO_OK;
+				}
+			}
+		}
+		index++;
+	}
+}
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/**	╔════════════════════════════════════════════════════════════════════════════════════════╗
+	║                                         HELPER                                         ║
+	╚════════════════════════════════════════════════════════════════════════════════════════╝ **/
 
 /**
  * @NAME incluir_carga_job
@@ -1181,9 +1332,197 @@ void cierre_rg(t_red_global * rg) {
 }
 
 /**
+ * @NAME cierre_a
+ */
+void cierre_a(t_almacenamiento * a) {
+	if (a->nodo) free(a->nodo);
+	if (a->ip_puerto) free(a->ip_puerto);
+	if (a->archivo_rg) free(a->archivo_rg);
+	free(a);
+}
+
+/**
  * @NAME cierre_cn
  */
 void cierre_cn(t_yama_carga_nodo * cn) {
 	free(cn->nodo);
 	free(cn);
+}
+
+
+
+
+
+
+
+
+
+
+
+/**	╔═════════════════════════════════════════════════════════════════════════════════════════╗
+	║                                         CONSOLA                                         ║
+	╚═════════════════════════════════════════════════════════════════════════════════════════╝ **/
+
+const char * INFO_JOB_CMD = "info";
+
+/**
+ * @NAME yama_console
+ */
+void yama_console(void * unused) {
+	char * input = NULL;
+	char * input_c = NULL;
+	char * command = NULL;
+	char * param = NULL;
+	size_t len = 0;
+	ssize_t read;
+	printf("\n[user@yama ~]$:");
+	while ((read = getline(&input, &len, stdin)) != -1) {
+		if (read > 0) {
+			input[read-1] = '\0';
+			input_c = string_duplicate(input);
+			char * token = strtok(input_c, " ");
+			if (token != NULL) command = token;
+			token = strtok(NULL, " ");
+			if (token != NULL) param = token;
+			if (strcmp(command, INFO_JOB_CMD) == 0) {
+				if (param == NULL || !is_number(param)) {
+					printf("\nerror: illegal arguments");
+					return;
+				} else {
+					pthread_mutex_lock(&tabla_estados);
+					info_job(atoi(param));
+					pthread_mutex_unlock(&tabla_estados);
+				}
+			} else {
+				printf("\nerror: command not found");
+			}
+		}
+		free(input_c);
+		free(input);
+		printf("\n[user@yama ~]$:");
+	}
+}
+
+/**
+ * @NAME info_job
+ */
+void info_job(int job_id) {
+
+	bool existe = false;
+	printf("\n    #job-id             #phase       #file-block   		  #node                    #ip:port   #node-block                          #status    											              #archivo_temp    															    #archivo_rl_temp   #designado                                          #archivo_rg");
+	printf("\n   ________   ________________   _______________   __________   _________________________   ___________   ______________________________   __________________________________________________   __________________________________________________   __________   __________________________________________________");
+
+	t_yama_estado_bloque * estado_bloque;
+	int i = 0;
+	while (i < (tabla_de_estados->elements_count)) {
+		estado_bloque = (t_yama_estado_bloque *) list_get(tabla_de_estados, i);
+		if ((estado_bloque->job_id) == job_id) {
+			bool existe = true;
+			printf("\n   %8d", (estado_bloque->job_id));
+			print_etapa(estado_bloque->etapa);
+			printf(" | %15d", (estado_bloque->bloque_archivo));
+			printf(" | %10s", (estado_bloque->nodo));
+			printf(" | %25s", (estado_bloque->ip_puerto));
+			printf(" | %11d", (estado_bloque->bloque_nodo));
+			print_estado(estado_bloque->estado);
+			printf(" | %50s", (estado_bloque->archivo_temp));
+			printf(" | %50s", (estado_bloque->archivo_rl_temp));
+			printf(" | %10s", ((estado_bloque->designado) ? "SI" : " "));
+			printf(" | %50s", (estado_bloque->archivo_rg));
+		}
+		i++;
+	}
+	if (!existe) {
+		printf("\n error: job id not exists.\nplease try again...");
+	}
+}
+
+/**
+ * @NAME print_etapa
+ */
+void print_etapa(int etapa) {
+	switch(etapa){
+	case TRANSFORMACION:
+		printf(" | %16s", "TRANSFORMACION");
+		break;
+	case REDUCCION_LOCAL:
+		printf(" | %16s", "REDUCCION LOCAL");
+		break;
+	case REDUCCION_GLOBAL:
+		printf(" | %16s", "REDUCCION GLOBAL");
+		break;
+	case ALMACENAMIENTO:
+		printf(" | %16s", "ALMACENAMIENTO");
+		break;
+	case FINALIZADO_OK:
+		printf(" | %16s", "FINALIZADO OK");
+		break;
+	case FINALIZADO_ERROR:
+		printf(" | %16s", "FINALIZADO ERROR");
+		break;
+	default:;
+	}
+}
+
+/**
+ * @NAME print_estado
+ */
+void print_estado(int estado) {
+
+	switch(estado){
+	case TRANSF_EN_PROCESO:
+		printf(" | %30s", "TRANSF EN PROCESO");
+		break;
+	case TRANSF_OK:
+		printf(" | %30s", "TRANSF OK");
+		break;
+	case TRANSF_ERROR:
+		printf(" | %30s", "TRANSF ERROR");
+		break;
+	case TRANSF_ERROR_SIN_NODOS_DISP:
+		printf(" | %30s", "TRANSF ERROR SIN NODOS DISP");
+		break;
+	case REDUC_LOCAL_EN_PROCESO:
+		printf(" | %30s", "REDUC LOCAL EN PROCESO");
+		break;
+	case REDUC_LOCAL_OK:
+		printf(" | %30s", "REDUC LOCAL OK");
+		break;
+	case REDUC_LOCAL_ERROR:
+		printf(" | %30s", "REDUC LOCAL ERROR");
+		break;
+	case REDUC_GLOBAL_EN_PROCESO:
+		printf(" | %30s", "REDUC GLOBAL EN PROCESO");
+		break;
+	case REDUC_GLOBAL_OK:
+		printf(" | %30s", "REDUC GLOBAL OK");
+		break;
+	case REDUC_GLOBAL_ERROR:
+		printf(" | %30s", "REDUC GLOBAL ERROR");
+		break;
+	case ALMACENAMIENTO_EN_PROCESO:
+		printf(" | %30s", "ALMACENAMIENTO EN PROCESO");
+		break;
+	case ALMACENAMIENTO_OK:
+		printf(" | %30s", "ALMACENAMIENTO OK");
+		break;
+	case ALMACENAMIENTO_ERROR:
+		printf(" | %30s", "ALMACENAMIENTO ERROR");
+		break;
+	default:;
+	}
+}
+
+/**
+ * @NAME is_number
+ */
+bool is_number(char * str) {
+	int j = 0;
+	while (j < strlen(str)) {
+		if(str[j] > '9' || str[j] < '0') {
+			return false;
+		}
+		j++;
+	}
+	return true;
 }
