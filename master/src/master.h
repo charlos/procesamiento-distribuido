@@ -19,8 +19,13 @@
 #include <shared-library/yama-prot.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 
 int yama_socket;
+#define max(a,b) \
+      ({ typeof (a) _a = (a); \
+          typeof (b) _b = (b); \
+        _a > _b ? _a : _b; })
 
 typedef struct {
 	char * ruta_trans;
@@ -49,6 +54,17 @@ typedef struct {
 	int bloque;
 } thread_args_transformacion;
 
+typedef struct {
+	int etapa;
+	int tiempo_promedio_ejecucion;
+	t_list * tiempo_ejecucion_hilos;
+	int cant_max_tareas_simultaneas;
+	int cant_total_tareas;
+	int cant_fallos_job;
+} t_estadisticas;
+
+t_list * lista_estadisticas;
+
 master_cfg * crear_config();
 
 struct_file * read_file(char * path);
@@ -62,6 +78,8 @@ void crear_hilo_transformador(t_transformacion *transformacion, int job_id);
 void crear_hilo_reduccion_local(t_red_local *reduccion);
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
 void atender_solicitud(t_yama_planificacion_resp *solicitud);
+t_list * inicializar_estadisticas();
+int calcular_promedio(t_list * lista_tiempo_ejecucion);
 
 
 #endif /* MASTER_H_ */

@@ -61,4 +61,7 @@ int yama_transform_res_send(int * yama_socket, int * result);
 int yama_transform_res_recv(int * master_socket, int * result);
 int reduccion_local_res_send(int * master_socket, respuesta_yama_reduccion_local * struct_reduccion);
 int reduccion_local_res_recv(int * yama_socket, respuesta_yama_reduccion_local * struct_reduccion);
+
+int enviar_solicitud_almacenamiento_a_worker(int worker_socket, char * path);
+char * recibir_solicitud_alamacenamiento_desde_worker(int master_socket);
 #endif /* MASTER_PROT_H_ */
