@@ -13,6 +13,13 @@ typedef struct {
 } t_yama_conf;
 
 typedef struct {
+	uint32_t disponibilidad;
+	char * nodo;
+	uint32_t wl;
+	uint32_t wl_total;
+} t_yama_carga_nodo;
+
+typedef struct {
 	char * nodo;
 	char * ip_puerto;
 	int32_t bloque_nodo;
@@ -22,29 +29,28 @@ typedef struct {
 typedef struct {
 	uint32_t job_id;
 	uint8_t etapa;
-	uint32_t bloque_archivo;
+	t_list * nodos;
+} t_yama_job;
+
+typedef struct {
 	char * nodo;
 	char * ip_puerto;
-	uint32_t bloque_nodo;
-	uint32_t bytes_ocupados;
 	uint8_t estado;
-	char * archivo_temp;
+	t_list * transformaciones;
 	char * archivo_rl_temp;
 	uint8_t designado;
 	char * archivo_rg;
+	uint32_t wl_total_nodo;
+	t_yama_carga_nodo * carga;
+} t_yama_nodo_job;
+
+typedef struct {
+	uint32_t bloque_archivo;
+	uint32_t bloque_nodo;
+	uint32_t bytes_ocupados;
 	t_list * copias;
-} t_yama_estado_bloque;
-
-typedef struct {
-	uint32_t disponibilidad;
-	char * nodo;
-	uint32_t wl;
-	uint32_t wl_total;
-} t_yama_carga_nodo;
-
-typedef struct {
-	uint32_t job_id;
-	t_list * cargas;
-} t_yama_carga_job;
+	char * archivo_temp;
+	uint8_t estado;
+} t_yama_transformacion;
 
 #endif /* YAMA_H_ */
