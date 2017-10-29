@@ -24,6 +24,7 @@ void * data_bin_mf_ptr;
 int main(void) {
 
 	void* buffer;
+	int child_status;
 	//int buffer_size;
 	uint8_t task_code;
 	char* script_filename = string_new();
@@ -112,13 +113,18 @@ int main(void) {
 //		      execve(script_filename, argv, envp);
 
 
-			  processRequestFromMaster(task_code, buffer);
+			  child_status = processRequest(task_code, buffer);
+
+			  //TODO reponder a Master el fin del ejecución del pedido
 
 			  //cierro el hijo
 		      exit(0);
 
 		  }
 		  else {
+
+			  free(buffer);
+
 //			  log_trace(logger, "Proceso Padre PID %d (PID del creado: %d)",getpid(),pid);
 //			  close( pipe_padreAHijo[0] ); //Lado de lectura de lo que el padre le pasa al hijo.
 //			  close( pipe_hijoAPadre[1] ); //Lado de escritura de lo que hijo le pasa al padre.

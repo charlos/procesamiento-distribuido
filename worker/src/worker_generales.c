@@ -100,9 +100,10 @@ size_t merge_two_files(FILE* file1, FILE* file2, char* result){
 }
 
 
-void processRequestFromMaster(uint8_t task_code, void* pedido){
+int processRequest(uint8_t task_code, void* pedido){
 	void* buffer;
 	int buffer_size;
+	int status;
 	char* script_filename = string_new();
 	string_append(&script_filename,PATH);
 	string_append(&script_filename,"script.sh");
@@ -132,7 +133,7 @@ void processRequestFromMaster(uint8_t task_code, void* pedido){
 					    //return -1;
 					}
 					fwrite(buffer, sizeof(char), buffer_size, input);
-					pclose(input);
+					status = pclose(input);
 					log_trace(logger, "WORKER - Transformación realizada");
 
 				}
@@ -148,23 +149,19 @@ void processRequestFromMaster(uint8_t task_code, void* pedido){
 				char** temp_files = string_split(request->temp_files, " ");
 				merge_temp_files(temp_files, request->result_file);
 
-				//compongo instrucción a ejecutar: script de reducción + ordenar + guardar en archivo temp
+				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
+				string_append(&instruccion, "cat ");
+				string_append(&instruccion, PATH);
+				string_append(&instruccion, request->result_file);
+				string_append(&instruccion, "|");
 				string_append(&instruccion, script_filename);
 				string_append(&instruccion, "|sort > ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, request->result_file);
 
-				FILE* input = popen (instruccion, "w");
-				if (!input){
-					log_error(logger, "WORKER - Reducción Local - Error al ejecutar");
-				    //return -1;
-				}
-				//TODO copiar el archivo que contiene el apareo en el pipe input
-				pclose(input);
-				log_trace(logger, "WORKER - Transformación realizada");
+				status = system(instruccion);
+				log_trace(logger, "WORKER - Reducción local realizada");
 
-
-				//free(pedido);
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
@@ -174,6 +171,6 @@ void processRequestFromMaster(uint8_t task_code, void* pedido){
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
 		}
-
+		return status;
 }
 

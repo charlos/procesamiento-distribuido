@@ -207,7 +207,7 @@ t_request_local_reduction * local_reduction_req_recv(int * client_socket, t_log 
 
 
 int task_response_send(int master_socket,int OC, int resp_code, t_log * logger){
-
+//  TODO agregar identificador de pedido para los casos en que un master haga dos pedidos al mismo Worker
 	uint8_t prot_OC = 2;
 	uint8_t prot_resp_code = 2;
 
