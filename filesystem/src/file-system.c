@@ -6,7 +6,6 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <pthread.h>
-#include <pthread.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <shared-library/data-node-prot.h>

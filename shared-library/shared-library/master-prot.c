@@ -98,3 +98,22 @@ ip_port_combo * split_ipport(char *ipport) {
 
 	return combo;
 }
+int enviar_solicitud_almacenamiento_a_worker(int worker_socket, char * path) {
+	int length_path = string_length(path) + 1;
+	void * buffer = malloc(length_path + 1);
+	memcpy(buffer, &length_path, 1);
+	memcpy(buffer + 1, path, length_path);
+
+	int status = socket_write(&worker_socket, buffer, length_path +1);
+	free(buffer);
+	return status;
+}
+char * recibir_solicitud_alamacenamiento_desde_worker(int master_socket) {
+	int * length_path = malloc(sizeof(int));
+	int status = socket_recv(&master_socket, length_path, 1);
+	//chequear status?
+	char * path = malloc(*length_path);
+	status = socket_recv(&master_socket, path, *length_path);
+	free(length_path);
+	return path;
+}
