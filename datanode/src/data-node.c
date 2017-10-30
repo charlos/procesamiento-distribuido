@@ -51,13 +51,14 @@ void load_dn_properties(char * cfg_path) {
 	//t_config * conf = config_create("/home/utnso/node.cfg"); // TODO
 	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
-	dn_conf->node_name = config_get_string_value(conf, "NOMBRE_NODO");
-	dn_conf->ip = config_get_string_value(conf, "IP_DATANODE");
-	dn_conf->port = config_get_string_value(conf, "PUERTO_DATANODE");
-	dn_conf->fs_ip = config_get_string_value(conf, "IP_FILESYSTEM");
-	dn_conf->fs_port = config_get_string_value(conf, "PUERTO_FILESYSTEM");
-	dn_conf->data_bin_path = config_get_string_value(conf, "RUTA_DATABIN");
-	dn_conf->logfile = config_get_string_value(conf, "LOGFILE");
+	dn_conf->node_name = string_duplicate(config_get_string_value(conf, "NOMBRE_NODO"));
+	dn_conf->ip = string_duplicate(config_get_string_value(conf, "IP_DATANODE"));
+	dn_conf->port = string_duplicate(config_get_string_value(conf, "PUERTO_DATANODE"));
+	dn_conf->fs_ip = string_duplicate(config_get_string_value(conf, "IP_FILESYSTEM"));
+	dn_conf->fs_port = string_duplicate(config_get_string_value(conf, "PUERTO_FILESYSTEM"));
+	dn_conf->data_bin_path = string_duplicate(config_get_string_value(conf, "RUTA_DATABIN"));
+	dn_conf->logfile = string_duplicate(config_get_string_value(conf, "LOGFILE"));
+	config_destroy(conf);
 }
 
 /**

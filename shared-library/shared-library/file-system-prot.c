@@ -50,7 +50,7 @@ int fs_handshake(int server_socket, char type, char * node_name, char * node_ip_
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_type);
 	if (type == 'd')
-		msg_size += prot_node_name_size + req_node_name_size + prot_blocks;
+		msg_size += prot_node_name_size + req_node_name_size + prot_node_ip_port_size + req_node_ip_port_size + prot_blocks;
 
 	void * request = malloc(msg_size);
 	memcpy(request, &req_ope_code, prot_ope_code);

@@ -165,8 +165,9 @@ void load_fs_properties(void) {
 	t_config * conf = config_create("/home/utnso/file-system.cfg");
 	fs_conf = malloc(sizeof(t_fs_conf));
 	fs_conf->port = config_get_int_value(conf, "PUERTO");
-	fs_conf->mount_point = config_get_string_value(conf, "MONTAJE");
-	fs_conf->logfile = config_get_string_value(conf, "LOGFILE");
+	fs_conf->mount_point = string_duplicate(config_get_string_value(conf, "MONTAJE"));
+	fs_conf->logfile = string_duplicate(config_get_string_value(conf, "LOGFILE"));
+	config_destroy(conf);
 }
 
 /**
@@ -880,6 +881,9 @@ void cpfrom(char * file_path, char * yamafs_dir, char type) {
 		break;
 	case EEXIST:
 		printf("error: file already exists in yamafs.\nplease try again...\n");
+		break;
+	case ENOSPC:
+		printf("error: no space left on device.\nplease try again...\n");
 		break;
 	default:;
 	}
