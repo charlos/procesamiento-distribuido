@@ -41,7 +41,7 @@ int main(void) {
 	load_properties();
 
 	//mapeo el archivo data.bin
-	data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDONLY);
+	//data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDONLY);
 
 	//Crear pipe de comunicación entre padre e hijo
 	//pipe(pipe_padreAHijo);

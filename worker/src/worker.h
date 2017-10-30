@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -35,6 +36,11 @@ typedef struct{
 	char* databin_path;
 }t_worker_conf;
 
+
+typedef struct {
+	void * file;
+	size_t filesize;
+} struct_file;
 
 void load_properties(void);
 void create_script_file(char *script_filename, int script_size, void* script );

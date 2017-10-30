@@ -174,3 +174,24 @@ int processRequest(uint8_t task_code, void* pedido){
 		return status;
 }
 
+struct_file * read_file(char * path) {
+	FILE * file;
+	struct stat st;
+	// este trim nose porque rompe
+//	string_trim(&path);
+	file = fopen(path, "r");
+
+	if (file) {
+		fseek(file, 0L, SEEK_END);
+		size_t size = ftell(file); // st.st_size;
+		fseek(file, 0L, SEEK_SET);
+		struct_file * file_struct = malloc(sizeof(struct_file));
+		file_struct->filesize = size;
+		file_struct->file = malloc(file_struct->filesize);
+
+		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, file, 0);
+
+		return file_struct;
+	}
+	return NULL;
+}

@@ -234,7 +234,7 @@ int task_response_send(int master_socket,int OC, int resp_code, t_log * logger){
 
 }
 
-t_response_task* task_response_recv(int worker_socket,int OC, int resp_code, t_log * logger){
+t_response_task* task_response_recv(int worker_socket, t_log * logger){
 
 	uint8_t prot_OC = 2;
 	uint8_t prot_resp_code = 2;
