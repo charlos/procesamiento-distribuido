@@ -44,9 +44,15 @@ int fs_handshake(int server_socket, char type, char * node_name, char * node_ip_
 
 	uint8_t req_ope_code = FS_HANDSHAKE;
 	uint8_t req_type = type;
-	uint8_t req_node_name_size = strlen(node_name) + 1;
-	uint8_t req_node_ip_port_size = strlen(node_ip_port) + 1;
-	uint32_t req_blocks = blocks;
+	uint8_t req_node_name_size;
+	uint8_t req_node_ip_port_size;
+	uint32_t req_blocks;
+
+	if (type == 'd') {
+		req_node_name_size = strlen(node_name) + 1;
+		req_node_ip_port_size = strlen(node_ip_port) + 1;
+		req_blocks = blocks;
+	}
 
 	int msg_size = sizeof(char) * (prot_ope_code + prot_type);
 	if (type == 'd')
@@ -109,7 +115,7 @@ t_fs_handshake_req * fs_handshake_recv_req(int * client_socket, t_log * logger) 
 			return request;
 		}
 		request->node_ip_port = malloc(sizeof(char) * node_ip_port_size);
-		received_bytes = socket_recv(client_socket, (request->node_ip_port), node_name_size);
+		received_bytes = socket_recv(client_socket, (request->node_ip_port), node_ip_port_size);
 		if (received_bytes <= 0) {
 			if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
 			request->exec_code = DISCONNECTED_CLIENT;
@@ -390,8 +396,8 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 	uint8_t resp_prot_block_copy_inf = sizeof(t_fs_copy_block);
 
 	int copies;
-	int j;
 	int i;
+	int j;
 
 	t_list * block_list = list_create();
 	for (i = 0; i < blocks; i++) {
@@ -429,7 +435,7 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 		}
 
 		t_list * copy_list = list_create();
-		for (j = 0; i < copies; j++) {
+		for (j = 0; j < copies; j++) {
 
 			copy_md = (t_fs_copy_block *) malloc(resp_prot_block_copy_inf);
 

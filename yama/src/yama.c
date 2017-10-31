@@ -193,7 +193,7 @@ void recibir_solicitudes_master(void) {
  * @NAME atender_solicitud_master
  */
 int atender_solicitud_master(int * socket_cliente) {
-	pthread_mutex_lock(&tabla_estados);
+//	pthread_mutex_lock(&tabla_estados);
 	int cod_operacion = yama_recv_cod_operacion(socket_cliente, logger);
 	if (cod_operacion == CLIENTE_DESCONECTADO)
 		return CLIENTE_DESCONECTADO;
@@ -216,7 +216,7 @@ int atender_solicitud_master(int * socket_cliente) {
 		break;
 	default:;
 	}
-	pthread_mutex_unlock(&tabla_estados);
+//	pthread_mutex_unlock(&tabla_estados);
 	return atsm;
 }
 
@@ -1212,8 +1212,6 @@ void cierre_bamd(t_fs_file_block_metadata * bloque_achivo_md) {
  * @NAME cierre_cmd
  */
 void cierre_cmd(t_fs_copy_block * copia_md) {
-	free(copia_md->node);
-	free(copia_md->ip_port);
 	free(copia_md);
 }
 

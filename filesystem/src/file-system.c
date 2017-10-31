@@ -763,7 +763,7 @@ void get_metadata_file(int * client_socket) {
 		cpy = 0;
 		while (cpy < keys_amount) {
 			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
-			if (config_has_property(md_file, cpy_key)) {
+			if (config_has_property(md_file_cfg, cpy_key)) {
 				data = config_get_array_value(md_file_cfg, cpy_key);
 				if (get_datanode_fd(data[0]) != DISCONNECTED_NODE) {
 					copy_md = (t_fs_copy_block *) malloc(sizeof(t_fs_copy_block));
