@@ -319,8 +319,9 @@ void yama_planificacion_send_resp(int * socket_cliente, int cod_resp, int etapa,
 	uint8_t resp_prot_cod = 2;
 	uint8_t resp_prot_etapa = 1;
 	uint8_t resp_prot_job_id = 4;
+	uint8_t resp_prot_cant_elem = 4;
 
-	int resp_size = (resp_prot_cod + resp_prot_etapa + resp_prot_job_id);
+	int resp_size = (resp_prot_cod + resp_prot_etapa + resp_prot_job_id + resp_prot_cant_elem);
 
 	if (cod_resp == EXITO) {
 		if (etapa == TRANSFORMACION) {

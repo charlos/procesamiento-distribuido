@@ -360,7 +360,7 @@ t_fs_get_md_file_resp * fs_get_metadata_file(int server_socket, char * path, t_l
 		return response;
 
 	t_fs_metadata_file * md_file = (t_fs_metadata_file *) malloc(sizeof(t_fs_metadata_file));
-	md_file->path = path;
+	md_file->path = string_duplicate(path);
 
 	uint8_t resp_prot_file_size = 4;
 	received_bytes = socket_recv(&server_socket, &(md_file->file_size), resp_prot_file_size);

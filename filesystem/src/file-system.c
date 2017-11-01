@@ -46,15 +46,15 @@ pthread_mutex_t nodes_table_m_lock;
 void write_file(void *, t_config *, int, t_list *);
 void upload_file(int *);
 void set_file_block(t_config *, int, void *);
-void rm_file_block(char *, int, int);
 void rm_file(char *);
+void rm_file_block(char *, int, int);
 void rm_dir(char *);
 void read_file(int *);
 void process_request(int *);
 void move(char *, char *);
 void load_fs_properties(void);
-void init_locks(void);
 void init(bool);
+void init_locks(void);
 void get_metadata_file(int *);
 void fs_rename(char *, char *);
 void fs_make_dir(char *);
@@ -65,8 +65,8 @@ void create_bitmap_for_node(char *, int);
 void cpto(char *, char *);
 void cpfrom(char *, char *, char);
 void cpblock(char *, int, char *);
-void closure_trs(t_fs_to_release *);
 void closure(void *);
+void closure_trs(t_fs_to_release *);
 void clean_dir(char *);
 void check_fs_status(void);
 void add_to_release_list(t_list *, char *);
@@ -81,13 +81,15 @@ int make_dir(int, char *);
 int load_bitmap_node(int *, bool, char *, char *, int);
 int get_released_size(t_list *, char *);
 int get_line_length(char *, int, int);
-int get_dir_index_from_table(char *, int, int, t_list *);
 int get_dir_index(char *, int, t_list *);
+int get_dir_index_from_table(char *, int, int, t_list *);
 int get_datanode_fd(char *);
 int cpy_to_local_dir(char *, char *, char *);
 int connect_node(int *, char *, char *, int);
+int check_fs_space(t_list *);
 int assign_node_block(char *);
 int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
+char * pre_assign_node(char *);
 char * get_datanode_ip_port(char * node_name);
 char * assign_node(char *);
 bool is_number(char *);
@@ -1084,34 +1086,23 @@ int get_line_length(char * file, int file_pos, int file_size) {
  */
 int assign_blocks_to_file(t_config ** file, int dir_index, char * file_name, char type, int file_size, t_list * required_blocks) {
 
-	int block = 0;
-	char * cpy_01_node;
-	char * cpy_02_node;
-	while (block < (required_blocks->elements_count)) {
-		cpy_01_node = assign_node(NULL);
-		if (!cpy_01_node) {
-			return ENOSPC;
-		}
-		cpy_02_node = assign_node(cpy_01_node);
-		if (!cpy_02_node) {
-			free(cpy_01_node);
-			return ENOSPC;
-		}
-		free(cpy_01_node);
-		free(cpy_02_node);
-		block++;
+	if (check_fs_space(required_blocks) == ENOSPC) {
+		return ENOSPC;
 	}
 
 	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, file_name);
 	FILE * md_file = fopen(md_file_path, "w");
 	fprintf(md_file,"TAMANIO=%d\n", file_size);
 
+	char * cpy_01_node;
+	char * cpy_02_node;
 	char * key;
 	char * value_str;
+
 	int assigned_block;
+	int block = 0;
 
 	t_fs_required_block * required_block;
-	block = 0;
 	while (block < (required_blocks->elements_count)) {
 		required_block = (t_fs_required_block *) list_get(required_blocks, block);
 
@@ -1152,6 +1143,68 @@ int assign_blocks_to_file(t_config ** file, int dir_index, char * file_name, cha
 	* file = config_create(md_file_path);
 	free(md_file_path);
 	return SUCCESS;
+}
+
+/**
+ * @NAME check_fs_space
+ */
+int check_fs_space(t_list * required_blocks) {
+
+	char * key;
+	int index = 0;
+	t_fs_node * node;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		key = string_from_format("%sLibre", (node->node_name));
+		node->free_blocks = config_get_int_value(nodes_table, key);
+		free(key);
+		index++;
+	}
+
+	int block = 0;
+	char * cpy_01_node;
+	char * cpy_02_node;
+	while (block < (required_blocks->elements_count)) {
+		cpy_01_node = pre_assign_node(NULL);
+		if (!cpy_01_node) {
+			return ENOSPC;
+		}
+		cpy_02_node = pre_assign_node(cpy_01_node);
+		if (!cpy_02_node) {
+			free(cpy_01_node);
+			return ENOSPC;
+		}
+		free(cpy_01_node);
+		free(cpy_02_node);
+		block++;
+	}
+	return SUCCESS;
+}
+
+/**
+ * @NAME pre_assign_node
+ */
+char * pre_assign_node(char * unwanted_node) {
+	t_fs_node * selected_node = NULL;
+	t_fs_node * node;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
+			index++;
+		} else {
+			if (((node->free_blocks) > 0) && ((!selected_node) || ((node->free_blocks) > (selected_node->free_blocks)))) {
+				selected_node = node;
+			}
+			index++;
+		}
+	}
+	if (!selected_node) {
+		return NULL;
+	} else {
+		(selected_node->free_blocks)--;
+		return string_duplicate(selected_node->node_name);
+	}
 }
 
 /**

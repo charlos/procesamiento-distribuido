@@ -28,6 +28,7 @@ typedef struct {
 	char * ip_port;
 	int size;
 	int fd;
+	int free_blocks;
 	t_bitarray * bitmap;
 } t_fs_node;
 
