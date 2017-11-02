@@ -42,7 +42,7 @@ typedef struct {
 	size_t filesize;
 } struct_file;
 
-void load_properties(void);
+void load_properties(char * path);
 void create_script_file(char *script_filename, int script_size, void* script );
 size_t merge_two_files(FILE* file1, FILE* file2, char* result);
 int processRequest(uint8_t task_code, void* pedido);

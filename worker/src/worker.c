@@ -13,7 +13,7 @@
 int listenning_socket;
 int pipe_padreAHijo[2];
 int pipe_hijoAPadre[2];
-int * new_socket;
+int new_socket;
 pid_t pid;
 int status;
 t_worker_conf* worker_conf;
@@ -21,7 +21,7 @@ t_log* logger;
 //FILE *fptr;
 void * data_bin_mf_ptr;
 
-int main(void) {
+int main(int argc, char * argv[]) {
 
 	void* buffer;
 	int child_status;
@@ -38,7 +38,7 @@ int main(void) {
 	log_trace(logger, "Proceso Worker iniciando");
 
 	//Cargar archivo de configuración del nodo
-	load_properties();
+	load_properties(argv[1]);
 
 	//mapeo el archivo data.bin
 	//data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDONLY);
@@ -49,11 +49,11 @@ int main(void) {
 
 	listenning_socket = open_socket(SOCKET_BACKLOG, (worker_conf->worker_port));
 	while (1) {
-		new_socket = malloc(sizeof(int));
-		*new_socket = accept_connection(listenning_socket);
+//		new_socket = malloc(sizeof(int));
+		new_socket = accept_connection(listenning_socket);
 
 		//Recibo el código de operación para saber que tarea recibir
-		int received_bytes = socket_recv(new_socket, &task_code, sizeof(uint8_t));
+		int received_bytes = socket_recv(&new_socket, &task_code, sizeof(uint8_t));
 
 		if (received_bytes <= 0) {
 			log_error(logger, "WORKER - Problema al recibir código de operación >> disconnected");
@@ -62,7 +62,7 @@ int main(void) {
 		switch (task_code) {
 			case TRANSFORM_OC:
 				//t_request_transformation* pedido = transform_req_recv(new_socket, logger);
-				buffer = transform_req_recv(new_socket, logger);
+				buffer = transform_req_recv(&new_socket, logger);
 //				if (pedido->exec_code == SUCCESS){
 //					//Creo el archivo y guardo el script a ejecutar
 //					create_script_file(script_filename, pedido->script_size, pedido->script );
@@ -79,12 +79,14 @@ int main(void) {
 
 			case REDUCE_LOCALLY_OC:
 				//t_request_local_reduction* pedido = local_reduction_req_recv(new_socket, logger);
-				buffer  = local_reduction_req_recv(new_socket, logger);
+				buffer  = local_reduction_req_recv(&new_socket, logger);
 //				char** temp_files = string_split(pedido->temp_files, " ");
 //				merge_temp_files(temp_files, pedido->result_file);
 
 				break;
 			case REDUCE_GLOBAL_OC:
+				buffer = global_reduction_req_recv(&new_socket, logger);
+				break;
 			case STORAGE_OC:
 			//case REQUEST_TEMP_FILE:
 			default:

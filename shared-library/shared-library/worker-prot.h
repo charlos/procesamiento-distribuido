@@ -8,6 +8,8 @@
 #ifndef WORKER_PROT_H_
 #define WORKER_PROT_H_
 
+#include "yama-prot.h"
+
 #define TRANSFORM_OC			1
 #define REDUCE_LOCALLY_OC		2
 #define REDUCE_GLOBAL_OC		3
@@ -37,6 +39,11 @@ typedef struct{
 	 int16_t exec_code;
 } t_request_local_reduction;
 
+typedef struct{
+	void *script;
+	t_list *lista_nodos_reduccion_global;
+	uint16_t exec_code;
+} t_request_global_reduction;
 
 typedef struct{
 	int16_t oc_code; 		//Etapa realizada
@@ -64,6 +71,16 @@ int local_reduction_req_send(int worker_socket, char* temp_files, char* result_f
  * Recepción en Worker de solicitud de Etapa 2 (Reducción Local)
  */
 t_request_local_reduction * local_reduction_req_recv(int * client_socket, t_log * logger);
+
+/*
+ * solicitud de Etapa 3 (Reducción Global) desde Master hacia Worker
+ */
+int global_reduction_req_send(int worker_socket, int script_size, void *script, t_list* lista_nodos, t_log * logger);
+
+/*
+ * Recepción en Worker de solicitud de Etapa 3 (Reducción Global)
+ */
+t_request_global_reduction *global_reduction_req_recv(int * client_socket, t_log * logger);
 
 /*
  * Respuesta desde Worker hacia Master de resultado de una Etapa (solo responde un código, por lo que es la misma función para todas las etapas)

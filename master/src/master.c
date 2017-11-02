@@ -9,7 +9,7 @@
  */
 
 #include "master.h"
-
+#include <fcntl.h>
 pedido_master * pedido;
 int job_id;
 int main(int argc, char ** argv) {
@@ -127,19 +127,14 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	ip_port_combo * combo = split_ipport(respuesta->ip_port);
 
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
-	transform_req_send(socket_worker, respuesta->bloque,
-			respuesta->bytes_ocupados, respuesta->archivo_temporal,
-			transformador_file->filesize, transformador_file->file, logger);
+	transform_req_send(socket_worker, respuesta->bloque, respuesta->bytes_ocupados, respuesta->archivo_temporal, transformador_file->filesize, transformador_file->file, logger);
+	// TODO Manejar si el send salio mal
+	t_response_task * response_task = task_response_recv(socket_worker, logger);
 
-	resultado_transformacion * result = malloc(sizeof(resultado_transformacion));
-	int status = transform_res_recv(&socket_worker, result);
-
-
-	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, result->resultado, logger);
+	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, response_task->result_code, logger);
 //	status = yama_transform_res_send(&yama_socket, resultado);
 	liberar_respuesta_transformacion(respuesta);
 	liberar_combo_ip(combo);
-	free(result);
 
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
@@ -157,6 +152,9 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 
 	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
 	local_reduction_req_send(socket_worker, respuesta->archivo_rl_temp, respuesta->archivos_temp, script_reduccion->filesize, script_reduccion->file, logger);
+	// TODO Manejar si el send salio mal
+	t_response_task * response_task = task_response_recv(socket_worker, logger);
+	yama_registrar_resultado(yama_socket, job_id, respuesta->nodo, RESP_REDUCCION_LOCAL, response_task->result_code, logger);
 	liberar_respuesta_reduccion_local(respuesta);
 	liberar_combo_ip(combo);
 
@@ -183,11 +181,9 @@ struct_file * read_file(char * path) {
 		fseek(file, 0L, SEEK_SET);
 		struct_file * file_struct = malloc(sizeof(struct_file));
 		file_struct->filesize = size;
-		file_struct->file = malloc(file_struct->filesize);
 
-		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
-				file, 0);
-
+		file_struct->file = map_file(path, O_RDWR);
+		fclose(file);
 		return file_struct;
 	}
 	return NULL;
@@ -317,6 +313,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
 		struct_file * file = read_file(pedido->ruta_reduc);
 		// TODO: enviar script, lista de nodos, y lista de nombres de archivos
+		global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
 
 		// recibir respuesta de worker
 

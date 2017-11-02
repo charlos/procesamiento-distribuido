@@ -12,8 +12,8 @@ extern t_worker_conf* worker_conf;
 extern t_log* logger;
 extern void * data_bin_mf_ptr;
 
-void load_properties(void) {
-	t_config * conf = config_create("./nodo.cfg");
+void load_properties(char * path) {
+	t_config * conf = config_create(path);
 	worker_conf = malloc(sizeof(t_worker_conf));
 	worker_conf->filesystem_ip = config_get_string_value(conf, "IP_FILESYSTEM");
 	worker_conf->filesystem_port = config_get_int_value(conf, "PUERTO_FILESYSTEM");
