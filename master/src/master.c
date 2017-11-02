@@ -19,6 +19,7 @@ int main(int argc, char ** argv) {
 				"ERROR: Cantidad de parametros invalida. Deben ser 4: transformador/ruta \nreductor/ruta \nArchivo de origen/ruta \narchivo resultado/ruta");
 		exit(0);
 	}
+	crear_logger(argv[0], &logger, false, LOG_LEVEL_TRACE);
 	struct timeval tiempo_inicio, tiempo_finalizacion;
 	uint32_t elapsedTime;
 	lista_estadisticas = inicializar_estadisticas();
@@ -129,6 +130,8 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
 	transform_req_send(socket_worker, respuesta->bloque, respuesta->bytes_ocupados, respuesta->archivo_temporal, transformador_file->filesize, transformador_file->file, logger);
 	// TODO Manejar si el send salio mal
+
+
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
 
 	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, response_task->result_code, logger);
@@ -316,8 +319,11 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
 
 		// recibir respuesta de worker
+		t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
 
 		// Enviar notificacion a YAMA
+
+		yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
@@ -331,6 +337,9 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		// guardar?
 		t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
 		est_reduccion_global->cant_total_tareas += list_size(solicitud->planificados);
+
+		liberar_combo_ip(ip_port_combo);
+		// TODO Terminar de liberar estructuras
 		break;
 	default:
 		// Todavia nose

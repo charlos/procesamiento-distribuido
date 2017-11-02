@@ -65,6 +65,8 @@ int main(int argc, char * argv[]) {
 			}
 			case REDUCE_GLOBAL_OC:
 				buffer = global_reduction_req_recv(&new_socket, logger);
+				t_request_global_reduction * request = buffer;
+				request_send_resp(&new_socket, request->exec_code);
 				break;
 			case STORAGE_OC:
 			//case REQUEST_TEMP_FILE:
