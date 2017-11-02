@@ -51,6 +51,12 @@ typedef struct{
 	int16_t exec_code;		//Resultado de la recepción del mensaje
 } t_response_task;
 
+
+/*
+ * Respuesta desde Worker a Master al recibir el pedido de cada etapa
+ */
+void request_send_resp(int * master_socket, int status);
+
 /*
  * solicitud de Etapa 1 (Transformación) desde Master hacia Worker
  */
@@ -85,7 +91,7 @@ t_request_global_reduction *global_reduction_req_recv(int * client_socket, t_log
 /*
  * Respuesta desde Worker hacia Master de resultado de una Etapa (solo responde un código, por lo que es la misma función para todas las etapas)
  */
-int task_response_send(int master_socket,int OC, int resp_code, t_log * logger);
+void task_response_send(int master_socket,int OC, int resp_code, t_log * logger);
 
 /*
  * Recepción de respuesta en Master del resultado de la etapa

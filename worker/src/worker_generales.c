@@ -12,8 +12,8 @@ extern t_worker_conf* worker_conf;
 extern t_log* logger;
 extern void * data_bin_mf_ptr;
 
-void load_properties(char * path) {
-	t_config * conf = config_create(path);
+void load_properties(char * pathcfg) {
+	t_config * conf = config_create(pathcfg);
 	worker_conf = malloc(sizeof(t_worker_conf));
 	worker_conf->filesystem_ip = config_get_string_value(conf, "IP_FILESYSTEM");
 	worker_conf->filesystem_port = config_get_int_value(conf, "PUERTO_FILESYSTEM");
@@ -25,14 +25,11 @@ void load_properties(char * path) {
 
 
 void create_script_file(char *script_filename, int script_size, void* script ){
-	void* buffer;
-	FILE* fptr = fopen(script_filename, O_RDWR | O_CREAT | O_SYNC);
-	buffer = malloc(script_size);
-	memcpy(buffer,script,script_size);
-	fputs(buffer,fptr);
+	FILE* fptr = fopen(script_filename, "w+");
+	fwrite(script, sizeof(char), script_size, fptr);
 	fflush(fptr);
 	fclose(fptr);
-	free(buffer);
+	//free(buffer);
 }
 
 int merge_temp_files(char** temp_files, char* result_file){
@@ -119,9 +116,12 @@ int processRequest(uint8_t task_code, void* pedido){
 					buffer_size = request->used_size;
 					//Leer el archivo data.bin y obtener el bloque pedido
 					buffer = malloc(buffer_size);
+					//mapeo el archivo data.bin
+					data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDWR); //O_RDONLY
 					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (request->block)), buffer_size);
 
-					//compongo instrucción a ejecutar: script de trasnformacion + ordenar + guardar en archivo temp
+					//compongo instrucción a ejecutar: script de transformacion + ordenar + guardar en archivo temp
+					string_append(&instruccion, "./");
 					string_append(&instruccion, script_filename);
 					string_append(&instruccion, "|sort > ");
 					string_append(&instruccion, PATH);
@@ -134,7 +134,7 @@ int processRequest(uint8_t task_code, void* pedido){
 					}
 					fwrite(buffer, sizeof(char), buffer_size, input);
 					status = pclose(input);
-					log_trace(logger, "WORKER - Transformación realizada");
+					log_trace(logger, "WORKER - Transformación finalizada (Status %d)", status);
 
 				}
 				break;
@@ -153,14 +153,14 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&instruccion, "cat ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, request->result_file);
-				string_append(&instruccion, "|");
+				string_append(&instruccion, "| ./");
 				string_append(&instruccion, script_filename);
 				string_append(&instruccion, "|sort > ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, request->result_file);
 
 				status = system(instruccion);
-				log_trace(logger, "WORKER - Reducción local realizada");
+				log_trace(logger, "WORKER - Reducción local finalizada (Status %d)", status);
 
 				break;
 			}
@@ -175,23 +175,67 @@ int processRequest(uint8_t task_code, void* pedido){
 }
 
 struct_file * read_file(char * path) {
-	FILE * file;
-	struct stat st;
-	// este trim nose porque rompe
-//	string_trim(&path);
-	file = fopen(path, "r");
+	struct stat sb;
+		if ((stat(path, &sb) < 0) || (stat(path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+			log_error(logger,"WORKER - No se pudo abrir el archivo: %s",path);
+			return NULL;
+		}
 
-	if (file) {
-		fseek(file, 0L, SEEK_END);
-		size_t size = ftell(file); // st.st_size;
-		fseek(file, 0L, SEEK_SET);
-		struct_file * file_struct = malloc(sizeof(struct_file));
-		file_struct->filesize = size;
-		file_struct->file = malloc(file_struct->filesize);
+	struct_file * file_struct = malloc(sizeof(struct_file));
+	file_struct->filesize =  sb.st_size;
+	file_struct->file = map_file(path, O_RDWR);
 
-		file_struct->file = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, file, 0);
+	return file_struct;
 
-		return file_struct;
+}
+
+void free_request(int task_code, void* buffer){
+	switch (task_code) {
+		case TRANSFORM_OC:{
+			t_request_transformation* request = (t_request_transformation*)buffer;
+			free_request_local_reduction(request);
+			break;
+		}
+		case REDUCE_LOCALLY_OC:{
+			t_request_local_reduction* request = (t_request_local_reduction*)buffer;
+			free_request_transformation(request);
+			break;
+		}
+		case REDUCE_GLOBAL_OC:
+		case STORAGE_OC:
+			break;
 	}
-	return NULL;
+
+}
+
+void free_request_transformation(t_request_transformation* request){
+	free(request->result_file);
+	free(request->script);
+	free(request);
+}
+
+void free_request_local_reduction(t_request_local_reduction* request){
+	free(request->result_file);
+	free(request->script);
+	free(request->temp_files);
+	free(request);
+}
+
+void * map_file(char * file_path, int flags) {
+	struct stat sb;
+	size_t size;
+	int fd; // file descriptor
+	int status;
+
+	fd = open(file_path, flags);
+	//check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
+
+	status = fstat(fd, &sb);
+	//check(status < 0, "stat %s failed: %s", file_path, strerror(errno));
+	size = sb.st_size;
+
+	void * mapped_file_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	//check((mapped_file_ptr == MAP_FAILED), "mmap %s failed: %s", file_path, strerror(errno));
+
+	return mapped_file_ptr;
 }
