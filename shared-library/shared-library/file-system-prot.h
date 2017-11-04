@@ -10,8 +10,7 @@
 #define IP_PORT_LENGTH		25
 #define	FS_HANDSHAKE        1
 #define UPLOAD_FILE         2
-#define	READ_FILE           3
-#define	GET_METADATA_FILE   4
+#define	GET_METADATA_FILE   3
 #define DATANODE 			'd'
 #define YAMA				'y'
 #define WORKER 				'w'
@@ -41,7 +40,7 @@ typedef struct {
 	char type;
 	char * node_name;
 	char * node_ip_port;
-	int32_t blocks;
+	uint32_t blocks;
 } t_fs_handshake_req;
 
 /**
@@ -69,7 +68,7 @@ typedef struct {
 	int16_t exec_code;
 	char * path;
 	char type;
-	int file_size;
+	uint32_t file_size;
 	void * buffer;
 } t_fs_upload_file_req;
 
@@ -93,38 +92,6 @@ t_fs_upload_file_req * fs_upload_file_recv_req(int *, t_log *);
  *
  */
 void fs_upload_file_send_resp(int *, int);
-
-typedef struct {
-	int16_t exec_code;
-	char * path;
-} t_fs_read_file_req;
-
-typedef struct {
-	int16_t exec_code;
-	uint32_t buffer_size;
-	void * buffer;
-} t_fs_read_file_resp;
-
-/**
- * @NAME fs_read_file
- * @DESC
- *
- */
-t_fs_read_file_resp * fs_read_file(int, char *, t_log *);
-
-/**
- * @NAME fs_read_file_recv_req
- * @DESC
- *
- */
-t_fs_read_file_req * fs_read_file_recv_req(int *, t_log *);
-
-/**
- * @NAME fs_read_file_send_resp
- * @DESC
- *
- */
-void fs_read_file_send_resp(int *, int, int, void *);
 
 typedef struct {
 	char node[NODE_NAME_LENGTH];
