@@ -619,8 +619,8 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 							}
 							return;
 						}
+						k++;
 					}
-					k++;
 				}
 				j++;
 			}
@@ -972,12 +972,12 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 			j = 0;
 			while (j < (job->nodos->elements_count)) {
 				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
-				nodo_j->estado = REDUC_GLOBAL_EN_PROCESO;
 				red_global = (t_red_global *) malloc(sizeof(t_red_global));
 				red_global->nodo = string_duplicate(nodo_j->nodo);
 				red_global->ip_puerto = string_duplicate(nodo_j->ip_puerto);
 				red_global->archivo_rl_temp = string_duplicate(nodo_j->archivo_rl_temp);
 				if (nodo_designado == nodo_j) {
+					nodo_j->estado = REDUC_GLOBAL_EN_PROCESO;
 					red_global->designado = true;
 					char * archivo_rg = string_new();
 					string_append_with_format(&archivo_rg, "/tmp/J%d-final", job_id);
@@ -1316,7 +1316,6 @@ void yama_console(void * unused) {
 			}
 		}
 		free(input_c);
-		free(input);
 		printf("\n[user@yama ~]$:");
 	}
 }
@@ -1327,8 +1326,6 @@ void yama_console(void * unused) {
 void info_job(int job_id) {
 
 	bool existe = false;
-	printf("\n    #job-id             #phase        #node                    #ip:port                          #status   #file-block   #node-block                        #t-status                                        #archivo-temp                                     #archivo-rl-temp   #designado                                          #archivo_rg");
-	printf("\n   ________   ________________   __________   _________________________   ______________________________   ___________   ___________   ______________________________   __________________________________________________   __________________________________________________   __________   __________________________________________________");
 
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
@@ -1341,6 +1338,8 @@ void info_job(int job_id) {
 		job = (t_yama_job *) list_get(jobs, i);
 		if ((job->job_id) == job_id) {
 			existe = true;
+			printf("\n    #job-id             #phase        #node                    #ip:port                          #status   #file-block   #node-block                        #t-status                                        #archivo-temp                                     #archivo-rl-temp   #designado                                          #archivo_rg");
+			printf("\n   ________   ________________   __________   _________________________   ______________________________   ___________   ___________   ______________________________   __________________________________________________   __________________________________________________   __________   __________________________________________________");
 			j = 0;
 			while (j < (job->nodos->elements_count)) {
 				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
@@ -1369,7 +1368,7 @@ void info_job(int job_id) {
 	}
 
 	if (!existe) {
-		printf("\n error: job id not exists.\nplease try again...");
+		printf("\nerror: job id not exists.\nplease try again...");
 	}
 
 }

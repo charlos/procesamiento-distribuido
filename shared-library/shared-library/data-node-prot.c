@@ -46,7 +46,7 @@ void unmap_file(void * mapped_file, int file_size) {
 	╚════════════════════════╝ **/
 
 int dn_recv_operation_code(int * client_socket, t_log * logger) {
-	uint8_t prot_ope_code = 1;
+	uint8_t prot_ope_code = sizeof(uint8_t);
 	uint8_t ope_code;
 	int received_bytes = socket_recv(client_socket, &ope_code, prot_ope_code);
 	if (received_bytes <= 0) {
@@ -67,8 +67,8 @@ t_dn_get_block_resp * dn_get_block(int server_socket, int block, t_log * logger)
 		║ operation_code (1 byte) ║ block number (4 byte) ║
 		╚═════════════════════════╩═══════════════════════╝ **/
 
-	uint8_t prot_ope_code = 1;
-	uint8_t prot_block = 4;
+	uint8_t prot_ope_code = sizeof(uint8_t);
+	uint8_t prot_block = sizeof(uint32_t);
 
 	uint8_t req_ope_code = GET_BLOCK;
 	uint32_t req_block = block;
@@ -81,7 +81,7 @@ t_dn_get_block_resp * dn_get_block(int server_socket, int block, t_log * logger)
 	free(request);
 
 	t_dn_get_block_resp * response = malloc(sizeof(t_dn_get_block_resp));
-	uint8_t resp_prot_code = 2;
+	uint8_t resp_prot_code = sizeof(int16_t);
 	int received_bytes = socket_recv(&server_socket, &(response->exec_code), resp_prot_code);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
@@ -103,7 +103,7 @@ t_dn_get_block_resp * dn_get_block(int server_socket, int block, t_log * logger)
 
 t_dn_get_block_req * dn_get_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_get_block_req * request = malloc(sizeof(t_dn_get_block_req));
-	uint8_t prot_block = 4;
+	uint8_t prot_block = sizeof(uint32_t);
 	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
@@ -115,7 +115,7 @@ t_dn_get_block_req * dn_get_block_recv_req(int * client_socket, t_log * logger) 
 }
 
 void dn_get_block_send_resp(int * client_socket, int resp_code, void * buffer) {
-	uint8_t resp_prot_code = 2;
+	uint8_t resp_prot_code = sizeof(int16_t);
 	int response_size = sizeof(char) * (resp_prot_code + ((resp_code == SUCCESS) ? BLOCK_SIZE : 0));
 	void * response = malloc(response_size);
 	memcpy(response, &resp_code, resp_prot_code);
@@ -137,8 +137,8 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 		║ operation_code (1 byte) ║ block number (4 byte) ║ buffer ║
 		╚═════════════════════════╩═══════════════════════╩════════╝ **/
 
-	uint8_t prot_ope_code = 1;
-	uint8_t prot_block = 4;
+	uint8_t prot_ope_code = sizeof(uint8_t);
+	uint8_t prot_block = sizeof(uint32_t);
 
 	uint8_t req_ope_code = SET_BLOCK;
 	uint32_t req_block = block;
@@ -151,7 +151,7 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 	socket_send(&server_socket, request, msg_size, 0);
 	free(request);
 
-	uint8_t resp_prot_code = 2;
+	uint8_t resp_prot_code = sizeof(int16_t);
 	int16_t code;
 	int received_bytes = socket_recv(&server_socket, &code, resp_prot_code);
 	if (received_bytes <= 0) {
@@ -163,7 +163,7 @@ int dn_set_block(int server_socket, int block, void * buffer, t_log * logger) {
 
 t_dn_set_block_req * dn_set_block_recv_req(int * client_socket, t_log * logger) {
 	t_dn_set_block_req * request = malloc(sizeof(t_dn_set_block_req));
-	uint8_t prot_block = 4;
+	uint8_t prot_block = sizeof(uint32_t);
 	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
 		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
@@ -182,7 +182,7 @@ t_dn_set_block_req * dn_set_block_recv_req(int * client_socket, t_log * logger) 
 }
 
 void dn_set_block_send_resp(int * client_socket, int resp_code) {
-	uint8_t resp_prot_code = 2;
+	uint8_t resp_prot_code = sizeof(int16_t);
 	int response_size = sizeof(char) * (resp_prot_code);
 	void * response = malloc(response_size);
 	memcpy(response, &resp_code, resp_prot_code);

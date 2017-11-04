@@ -49,7 +49,6 @@ void set_file_block(t_config *, int, void *);
 void rm_file(char *);
 void rm_file_block(char *, int, int);
 void rm_dir(char *);
-void read_file(int *);
 void process_request(int *);
 void move(char *, char *);
 void load_fs_properties(void);
@@ -336,9 +335,6 @@ void process_request(int * client_socket) {
 		case UPLOAD_FILE:
 			upload_file(client_socket);
 			break;
-		case READ_FILE:
-			read_file(client_socket);
-			break;
 		case GET_METADATA_FILE:
 			get_metadata_file(client_socket);
 			break;
@@ -596,107 +592,6 @@ void upload_file(int * client_socket) {
 	free(req->path);
 	free(req->buffer);
 	free(req);
-}
-
-/**
- * @NAME read_file
- */
-void read_file(int * client_socket) {
-	t_fs_read_file_req * req = fs_read_file_recv_req(client_socket, logger);
-
-	char * dir_c = string_duplicate(req->path);
-	char * base_c = string_duplicate(req->path);
-	char * dir = dirname(dir_c);
-	char * file_name = basename(base_c);
-
-	int dir_index = get_dir_index(dir, LOCK_WRITE, NULL);
-	if (dir_index == ENOTDIR) {
-		free(base_c);
-		free(dir_c);
-		free(req->path);
-		free(req);
-		fs_read_file_send_resp(client_socket, ENOTDIR, 0, NULL);
-		return;
-	}
-	struct stat sb;
-	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, file_name);
-	if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
-		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-		free(md_file_path);
-		free(base_c);
-		free(dir_c);
-		free(req->path);
-		free(req);
-		fs_read_file_send_resp(client_socket, ENOENT, 0, NULL);
-		return;
-	}
-	free(req->path);
-	free(req);
-
-	//
-	// metadata file
-	//
-	t_config * md_file = config_create(md_file_path);
-	free(md_file_path);
-	int file_size = config_get_int_value(md_file, "TAMANIO");
-	void * buffer = malloc(file_size);
-
-	pthread_mutex_lock(&nodes_table_m_lock);
-
-	t_dn_get_block_resp * dn_block;
-	int datanode_fd;
-	int node_block;
-	int bytes;
-	int readed_bytes = 0;
-	int keys_amount = config_keys_amount(md_file);
-	int cpy;
-	int block = 0;
-
-	char * bytes_key = string_from_format("BLOQUE%dBYTES", block);
-	char * cpy_key;
-	char ** data;
-
-	while (config_has_property(md_file, bytes_key)) {
-		datanode_fd = DISCONNECTED_NODE;
-		cpy = 0;
-		while (datanode_fd == DISCONNECTED_NODE && cpy < keys_amount) {
-			cpy_key = string_from_format("BLOQUE%dCOPIA%d", block, cpy);
-			if (config_has_property(md_file, cpy_key)) {
-				data = config_get_array_value(md_file, cpy_key);
-				datanode_fd = get_datanode_fd(data[0]);
-				node_block = atoi(data[1]);
-				free(data[0]);
-				free(data[1]);
-				free(data);
-			}
-			free(cpy_key);
-			cpy++;
-		}
-
-		bytes = config_get_int_value(md_file, bytes_key);
-		dn_block = dn_get_block(datanode_fd, node_block, logger);
-		memcpy(buffer, (dn_block->buffer), bytes);
-		readed_bytes += bytes;
-
-		free(dn_block->buffer);
-		free(dn_block);
-		free(bytes_key);
-		block++;
-		bytes_key = string_from_format("BLOQUE%dBYTES", block);
-	}
-	free(bytes_key);
-	pthread_mutex_unlock(&nodes_table_m_lock);
-	config_destroy(md_file);
-	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-
-	if (readed_bytes == file_size) {
-		fs_read_file_send_resp(client_socket, SUCCESS, file_size, buffer);
-	} else {
-		fs_read_file_send_resp(client_socket, CORRUPTED_FILE, 0, NULL);
-	}
-	free(buffer);
-	free(base_c);
-	free(dir_c);
 }
 
 /**

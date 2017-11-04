@@ -52,8 +52,8 @@ void load_dn_properties(char * cfg_path) {
 	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = string_duplicate(config_get_string_value(conf, "NOMBRE_NODO"));
-	dn_conf->ip = string_duplicate(config_get_string_value(conf, "IP_DATANODE"));
-	dn_conf->port = string_duplicate(config_get_string_value(conf, "PUERTO_DATANODE"));
+	dn_conf->worker_ip = string_duplicate(config_get_string_value(conf, "IP_WORKER"));
+	dn_conf->worker_port = string_duplicate(config_get_string_value(conf, "PUERTO_WORKER"));
 	dn_conf->fs_ip = string_duplicate(config_get_string_value(conf, "IP_FILESYSTEM"));
 	dn_conf->fs_port = string_duplicate(config_get_string_value(conf, "PUERTO_FILESYSTEM"));
 	dn_conf->data_bin_path = string_duplicate(config_get_string_value(conf, "RUTA_DATABIN"));
@@ -83,9 +83,9 @@ void init(void) {
 	fs_socket = connect_to_socket((dn_conf->fs_ip), (dn_conf->fs_port));
 
 	char * ip_port = string_new();
-	string_append(&ip_port, (dn_conf->ip));
+	string_append(&ip_port, (dn_conf->worker_ip));
 	string_append(&ip_port, ":");
-	string_append(&ip_port, (dn_conf->port));
+	string_append(&ip_port, (dn_conf->worker_port));
 
 	if ((fs_handshake(fs_socket, DATANODE, (dn_conf->node_name), ip_port, blocks, logger)) != SUCCESS) {
 		// TODO: error handler
