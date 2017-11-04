@@ -158,7 +158,7 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	// TODO Manejar si el send salio mal
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
 	yama_registrar_resultado(yama_socket, job_id, respuesta->nodo, RESP_REDUCCION_LOCAL, response_task->result_code, logger);
-	liberar_respuesta_reduccion_local(respuesta);
+	closure_rl(respuesta);
 	liberar_combo_ip(combo);
 
 	free(script_reduccion->file);
@@ -196,14 +196,6 @@ void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta){
 	free(respuesta->archivo_temporal);
 	free(respuesta->ip_port);
 	free(respuesta->nodo);
-	free(respuesta);
-}
-
-void liberar_respuesta_reduccion_local(t_red_local *respuesta){
-	free(respuesta->archivo_rl_temp);
-	free(respuesta->archivos_temp);
-	free(respuesta->nodo);
-	free(respuesta->ip_puerto);
 	free(respuesta);
 }
 
@@ -314,8 +306,10 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		}
 		ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
 		nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
+		liberar_combo_ip(ip_port);
 		struct_file * file = read_file(pedido->ruta_reduc);
-		// TODO: enviar script, lista de nodos, y lista de nombres de archivos
+
+		// Se envia script y lista de nodos a worker designado
 		global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
 
 		// recibir respuesta de worker
@@ -324,6 +318,11 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		// Enviar notificacion a YAMA
 
 		yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
+		free(response_task);
+		free(file->file);
+		free(file);
+		list_iterate(solicitud->planificados, closure_rg);
+		closure_rg(nodo_encargado);
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
@@ -346,5 +345,6 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		printf("default");
 	}
 	// cada hilo tiene que liberar los atributos internos de su solicitud
+	list_destroy(solicitud->planificados);
 	free(solicitud);
 }

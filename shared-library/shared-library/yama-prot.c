@@ -2,8 +2,6 @@
 #include "socket.h"
 
 void closure_tt(t_transformacion *);
-void closure_rl(t_red_local *);
-void closure_rg(t_red_global *);
 void closure_a(t_almacenamiento *);
 void agregar_transformaciones(void *, int, t_list *);
 void agregar_reducciones_locales(void *, int, t_list *);

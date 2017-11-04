@@ -165,4 +165,7 @@ t_yama_planificacion_resp * yama_resp_planificacion(int, t_log *);
  */
 void yama_planificacion_send_resp(int *, int, int, int, t_list *);
 
+void closure_rg(t_red_global *);
+void closure_rl(t_red_local *);
+
 #endif /* YAMA_PROTOCOL_H_ */
