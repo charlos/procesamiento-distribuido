@@ -15,10 +15,11 @@ t_log * logger;
 int fs_socket;
 void * data_bin_mf_ptr;
 
-void set_block();
+void set_block(void);
+void ping(void);
 void load_dn_properties(char *);
 void init(void);
-void get_block();
+void get_block(void);
 void create_logger(void);
 
 int main(int argc, char * argv[]) {
@@ -35,6 +36,9 @@ int main(int argc, char * argv[]) {
 			break;
 		case SET_BLOCK:
 			set_block();
+			break;
+		case PING:
+			ping();
 			break;
 		default:;
 		}
@@ -99,7 +103,7 @@ void init(void) {
 /**
  * @NAME get_block
  */
-void get_block() {
+void get_block(void) {
 	t_dn_get_block_req * req = dn_get_block_recv_req(&fs_socket, logger);
 	void * buffer = malloc(BLOCK_SIZE);
 	memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (req->block)), BLOCK_SIZE);
@@ -111,10 +115,17 @@ void get_block() {
 /**
  * @NAME set_block
  */
-void set_block() {
+void set_block(void) {
 	t_dn_set_block_req * req = dn_set_block_recv_req(&fs_socket, logger);
 	memcpy(data_bin_mf_ptr + (BLOCK_SIZE * (req->block)), (req->buffer), BLOCK_SIZE);
 	dn_set_block_send_resp(&fs_socket, SUCCESS);
 	free(req->buffer);
 	free(req);
+}
+
+/**
+ * @NAME ping
+ */
+void ping(void) {
+	dn_ping_send_resp(&fs_socket, SUCCESS);
 }

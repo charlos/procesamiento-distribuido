@@ -189,3 +189,43 @@ void dn_set_block_send_resp(int * client_socket, int resp_code) {
 	socket_write(client_socket, response, response_size);
 	free(response);
 }
+
+
+/**	╔══════╗
+	║ PING ║
+	╚══════╝ **/
+
+int dn_ping(int server_socket, t_log * logger) {
+
+	/**	╔═════════════════════════╗
+		║ operation_code (1 byte) ║
+		╚═════════════════════════╝ **/
+
+	uint8_t prot_ope_code = sizeof(uint8_t);
+
+	uint8_t req_ope_code = PING;
+
+	int msg_size = sizeof(char) * (prot_ope_code);
+	void * request = malloc(msg_size);
+	memcpy(request, &req_ope_code, prot_ope_code);
+	socket_send(&server_socket, request, msg_size, 0);
+	free(request);
+
+	uint8_t resp_prot_code = sizeof(int16_t);
+	int16_t code;
+	int received_bytes = socket_recv(&server_socket, &code, resp_prot_code);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ SERVER %d >> disconnected", server_socket);
+		return DISCONNECTED_SERVER;
+	}
+	return code;
+}
+
+void dn_ping_send_resp(int * client_socket, int resp_code) {
+	uint8_t resp_prot_code = sizeof(int16_t);
+	int response_size = sizeof(char) * (resp_prot_code);
+	void * response = malloc(response_size);
+	memcpy(response, &resp_code, resp_prot_code);
+	socket_write(client_socket, response, response_size);
+	free(response);
+}
