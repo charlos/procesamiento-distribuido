@@ -79,6 +79,6 @@ respuesta_yama_transform *crear_transformacion_master(t_transformacion *transfor
 void atender_solicitud(t_yama_planificacion_resp *solicitud);
 t_list * inicializar_estadisticas();
 int calcular_promedio(t_list * lista_tiempo_ejecucion);
-
+int traducir_respuesta(int respuesta, int etapa);
 
 #endif /* MASTER_H_ */

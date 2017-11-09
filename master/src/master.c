@@ -134,7 +134,14 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
 
-	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, response_task->result_code, logger);
+	int result;
+	if(response_task->exec_code == DISCONNECTED_CLIENT) {
+		result = TRANSF_ERROR;
+	} else {
+		result = traducir_respuesta(response_task->result_code, TRANSFORMACION);
+	}
+
+	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, result, logger);
 //	status = yama_transform_res_send(&yama_socket, resultado);
 	liberar_respuesta_transformacion(respuesta);
 	liberar_combo_ip(combo);
@@ -157,7 +164,15 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	local_reduction_req_send(socket_worker, respuesta->archivo_rl_temp, respuesta->archivos_temp, script_reduccion->filesize, script_reduccion->file, logger);
 	// TODO Manejar si el send salio mal
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
-	yama_registrar_resultado(yama_socket, job_id, respuesta->nodo, RESP_REDUCCION_LOCAL, response_task->result_code, logger);
+
+	int result;
+	if(response_task->exec_code == DISCONNECTED_CLIENT) {
+		result = REDUC_LOCAL_ERROR;
+	} else {
+		result = traducir_respuesta(response_task->result_code, REDUCCION_LOCAL);
+	}
+
+	yama_registrar_resultado(yama_socket, job_id, respuesta->nodo, RESP_REDUCCION_LOCAL, result, logger);
 	closure_rl(respuesta);
 	liberar_combo_ip(combo);
 
@@ -229,6 +244,7 @@ int calcular_promedio(t_list * lista_promedios) {
 		int t = list_get(lista_promedios, i);
 		total += t;
 	}
+	if(!cant) return 0;
 	return total/cant;
 }
 
@@ -342,4 +358,29 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 	// cada hilo tiene que liberar los atributos internos de su solicitud
 	list_destroy(solicitud->planificados);
 	free(solicitud);
+}
+int traducir_respuesta(int respuesta, int etapa) {
+	if(respuesta == SUCCESS) {
+		switch (etapa) {
+		case TRANSFORMACION:
+			return TRANSF_OK;
+		case REDUCCION_LOCAL:
+			return REDUC_LOCAL_OK;
+		case REDUCCION_GLOBAL:
+			return REDUC_GLOBAL_OK;
+		default:
+			break;
+		}
+	} else {
+		switch (etapa) {
+		case TRANSFORMACION:
+			return TRANSF_ERROR;
+		case REDUCCION_LOCAL:
+			return REDUC_LOCAL_ERROR;
+		case REDUCCION_GLOBAL:
+			return REDUC_GLOBAL_ERROR;
+		default:
+			break;
+		}
+	}
 }

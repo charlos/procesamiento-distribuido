@@ -511,7 +511,7 @@ void incluir_nodo_job(t_yama_job * job, t_list * planificados, char * nodo, char
 	transf->bytes_ocupados = bytes_ocupados;
 	transf->copias = copias;
 	transf->archivo_temp = string_new();
-	string_append_with_format(&(transf->archivo_temp), "/tmp/J%d-%s-B%dETF", (job->job_id), (nodo_job->nodo), bloque_nodo);
+	string_append_with_format(&(transf->archivo_temp), "/J%d-%s-B%dETF", (job->job_id), (nodo_job->nodo), bloque_nodo);
 	transf->estado = TRANSF_EN_PROCESO;
 	list_add(transformaciones, transf);
 
@@ -772,7 +772,7 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 				if (strcmp((nodo_j->nodo), nodo) == 0) {
 
 					char * archivo_rl_temp = string_new();
-					string_append_with_format(&archivo_rl_temp, "/tmp/J%d-%s-r-local", job_id, nodo);
+					string_append_with_format(&archivo_rl_temp, "/J%d-%s-r-local", job_id, nodo);
 
 					job->etapa = REDUCCION_LOCAL;
 					nodo_j->estado = REDUC_LOCAL_EN_PROCESO;
@@ -980,7 +980,7 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 					nodo_j->estado = REDUC_GLOBAL_EN_PROCESO;
 					red_global->designado = true;
 					char * archivo_rg = string_new();
-					string_append_with_format(&archivo_rg, "/tmp/J%d-final", job_id);
+					string_append_with_format(&archivo_rg, "/J%d-final", job_id);
 					red_global->archivo_rg = string_duplicate(archivo_rg);
 					free(nodo_j->archivo_rg);
 					nodo_j->archivo_rg = string_duplicate(archivo_rg);
