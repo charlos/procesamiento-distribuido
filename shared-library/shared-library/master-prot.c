@@ -98,6 +98,12 @@ ip_port_combo * split_ipport(char *ipport) {
 
 	return combo;
 }
+
+void liberar_combo_ip(ip_port_combo *combo){
+	free(combo->ip);
+	free(combo->port);
+	free(combo);
+}
 int enviar_solicitud_almacenamiento_a_worker(int worker_socket, char * path) {
 	int length_path = string_length(path) + 1;
 	void * buffer = malloc(length_path + 1);
