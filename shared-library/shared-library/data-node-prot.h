@@ -8,6 +8,7 @@
 
 #define	GET_BLOCK           1
 #define SET_BLOCK           2
+#define PING           		3
 
 #define	SUCCESS     				  	   1
 #define	DISCONNECTED_CLIENT			  	-201
@@ -91,5 +92,19 @@ t_dn_set_block_req * dn_set_block_recv_req(int *, t_log *);
  *
  */
 void dn_set_block_send_resp(int *, int);
+
+/**
+ * @NAME dn_ping
+ * @DESC
+ *
+ */
+int dn_ping(int, t_log *);
+
+/**
+ * @NAME dn_ping_send_resp
+ * @DESC
+ *
+ */
+void dn_ping_send_resp(int *, int);
 
 #endif /* DATA_NODE_PROTOCOL_H_ */

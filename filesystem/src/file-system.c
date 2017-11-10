@@ -31,6 +31,8 @@
 #define BINARY 					'b'
 #define TEXT 					't'
 
+const char * CLEAN_FLAG = "-clean";
+
 int listenning_socket;
 t_fs_conf * fs_conf;
 t_log * logger;
@@ -46,14 +48,14 @@ pthread_mutex_t nodes_table_m_lock;
 void write_file(void *, t_config *, int, t_list *);
 void upload_file(int *);
 void set_file_block(t_config *, int, void *);
-void rm_file(char *);
 void rm_file_block(char *, int, int);
+void rm_file(char *);
 void rm_dir(char *);
 void process_request(int *);
 void move(char *, char *);
 void load_fs_properties(void);
-void init(bool);
 void init_locks(void);
+void init(bool);
 void get_metadata_file(int *);
 void fs_rename(char *, char *);
 void fs_make_dir(char *);
@@ -64,12 +66,12 @@ void create_bitmap_for_node(char *, int);
 void cpto(char *, char *);
 void cpfrom(char *, char *, char);
 void cpblock(char *, int, char *);
-void closure(void *);
 void closure_trs(t_fs_to_release *);
+void closure(void *);
 void clean_dir(char *);
 void check_fs_status(void);
 void add_to_release_list(t_list *, char *);
-void add_node(t_list *, char *, int);
+void add_node(char *, int);
 t_list * calc_required_blocks_for_txt_file(char *, int);
 t_list * calc_required_blocks_for_binary_file(int file_size);
 int uploading_file(t_fs_upload_file_req * req);
@@ -77,11 +79,11 @@ int rw_lock_unlock(pthread_rwlock_t *, int, int);
 int rename_file(int, char *, char *);
 int rename_dir(int, char *);
 int make_dir(int, char *);
-int load_bitmap_node(int *, bool, char *, char *, int);
+void load_bitmap_node(int *, char *, char *, int);
 int get_released_size(t_list *, char *);
 int get_line_length(char *, int, int);
-int get_dir_index(char *, int, t_list *);
 int get_dir_index_from_table(char *, int, int, t_list *);
+int get_dir_index(char *, int, t_list *);
 int get_datanode_fd(char *);
 int cpy_to_local_dir(char *, char *, char *);
 int connect_node(int *, char *, char *, int);
@@ -92,11 +94,13 @@ char * pre_assign_node(char *);
 char * get_datanode_ip_port(char * node_name);
 char * assign_node(char *);
 bool is_number(char *);
+bool is_disconnected(t_fs_node *);
 bool in_ignore_list(int, t_list *);
 bool dir_exists(int, int, char *);
 
 int main(int argc, char * argv[]) {
-	bool clean_fs = true; // TODO: add clean flag
+
+	bool clean_fs = ((argc > 1) &&  (strcmp(argv[1], CLEAN_FLAG) == 0));
 
 	load_fs_properties();
 	create_logger();
@@ -128,7 +132,9 @@ int main(int argc, char * argv[]) {
 			if (hs_req->type == DATANODE) {
 				hs_result = connect_node(new_client, hs_req->node_name, hs_req->node_ip_port, hs_req->blocks);
 				fs_handshake_send_resp(new_client, hs_result);
-				if (hs_result != SUCCESS) {
+				if (hs_result == SUCCESS) {
+					check_fs_status();
+				} else {
 					close_client(* new_client);
 					free(new_client);
 				}
@@ -263,6 +269,29 @@ void init(bool clean_fs) {
 	// creating node list
 	nodes_list = list_create();
 
+	char ** nodes = config_get_array_value(nodes_table, "NODOS");
+	int pos = 0;
+	while (nodes[pos] != NULL) {
+
+		char * key = string_from_format("%sTotal", nodes[pos]);
+		int blocks = config_get_int_value(nodes_table, key);
+		free(key);
+
+		char * bitmap_file_path = string_from_format("%s/metadata/bitmaps/%s.bin", (fs_conf->mount_point), nodes[pos]);
+		t_bitarray * bitmap = bitarray_create_with_mode(map_file(bitmap_file_path, O_RDWR), blocks, MSB_FIRST);
+
+		t_fs_node * node = (t_fs_node *) malloc(sizeof(t_fs_node));
+		node->node_name = string_duplicate(nodes[pos]);
+		node->ip_port = string_new();
+		node->bitmap = bitmap;
+		node->size = blocks;
+		node->fd = -1;
+		list_add(nodes_list, node);
+		free(bitmap_file_path);
+
+		pos++;
+	}
+
 	init_locks();
 
 	free(nodes_bitmap_path);
@@ -349,39 +378,48 @@ void process_request(int * client_socket) {
 /**
  * @NAME connect_node
  */
-int connect_node(int * client_socket, char * node_name, char * node_ip_port, int blocks) {
+int connect_node(int * node_fd, char * node_name, char * node_ip_port, int blocks) {
 
 	pthread_mutex_lock(&nodes_table_m_lock);
-	char ** nodes = config_get_array_value(nodes_table, "NODOS");
-	t_list * nodes_table_list = list_create();
-	bool exits = false;
-	int pos = 0;
-	while (nodes[pos] != NULL) {
-		list_add(nodes_table_list, string_duplicate(nodes[pos]));
-		if (!exits)
-			exits = (strcmp(node_name, nodes[pos]) == 0);
-		free(nodes[pos]);
-		pos++;
+	t_fs_node * node;
+	bool node_exists = false;
+	bool already_connected = false;
+	int index = 0;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node_name, (node->node_name)) == 0) {
+			node_exists = true;
+			already_connected = ((node->fd) >= 0);
+			break;
+		}
+		index++;
 	}
-	free(nodes);
 
-	if (!exits) {
-		add_node(nodes_table_list, node_name, blocks);
+	int exec;
+	if (!node_exists) {
+		add_node(node_name, blocks);
 		create_bitmap_for_node(node_name, blocks);
+		load_bitmap_node(node_fd, node_name, node_ip_port, blocks);
+		exec = SUCCESS;
+	} else {
+		if (already_connected) {
+			exec = ALREADY_CONNECTED;
+		} else {
+			node = (t_fs_node *) list_get(nodes_list, index);
+			node->fd = * node_fd;
+			free(node->ip_port);
+			node->ip_port = string_duplicate(node_ip_port);
+			exec = SUCCESS;
+		}
 	}
-	int exec = load_bitmap_node(client_socket, !exits, node_name, node_ip_port, blocks);
-	if (exec == SUCCESS)
-		check_fs_status();
 	pthread_mutex_unlock(&nodes_table_m_lock);
-
-	list_destroy_and_destroy_elements(nodes_table_list, &closure);
 	return exec;
 }
 
 /**
  * @NAME add_node
  */
-void add_node(t_list * nodes_table_list, char * new_node_name, int blocks) {
+void add_node(char * new_node_name, int blocks) {
 
 	char * data_bin_path = string_from_format("%s/metadata/nodos.bin", (fs_conf->mount_point));
 	char * temp_data_bin_path = string_from_format("%s/metadata/temp.bin", (fs_conf->mount_point));
@@ -392,12 +430,15 @@ void add_node(t_list * nodes_table_list, char * new_node_name, int blocks) {
 	fprintf(temp,"LIBRE=%d\n", ((config_get_int_value(nodes_table, "LIBRE")) + blocks));
 
 	int index;
+	t_fs_node * node;
 	char * node_list_str = string_new();
-	if (nodes_table_list->elements_count > 0) {
-		string_append_with_format(&node_list_str, "[%s", (char *) (list_get(nodes_table_list, 0)));
+	if (nodes_list->elements_count > 0) {
+		node = (t_fs_node *) list_get(nodes_list, 0);
+		string_append_with_format(&node_list_str, "[%s", (node->node_name));
 		index = 1;
-		while (index < (nodes_table_list->elements_count)) {
-			string_append_with_format(&node_list_str, ",%s", (char *) (list_get(nodes_table_list, index)));
+		while (index < (nodes_list->elements_count)) {
+			node = (t_fs_node *) list_get(nodes_list, index);
+			string_append_with_format(&node_list_str, ",%s", (node->node_name));
 			index++;
 		}
 		string_append_with_format(&node_list_str, ",%s]", new_node_name);
@@ -410,13 +451,12 @@ void add_node(t_list * nodes_table_list, char * new_node_name, int blocks) {
 
 	index = 0;
 	char * key;
-	char * node;
-	while (index < (nodes_table_list->elements_count)) {
-		node = (char *) (list_get(nodes_table_list, index));
-		key = string_from_format("%sTotal", node);
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		key = string_from_format("%sTotal", (node->node_name));
 		fprintf(temp,"%s=%d\n", key, (config_get_int_value(nodes_table, key)));
 		free(key);
-		key = string_from_format("%sLibre", node);
+		key = string_from_format("%sLibre", (node->node_name));
 		fprintf(temp,"%s=%d\n", key, (config_get_int_value(nodes_table, key)));
 		free(key);
 		index++;
@@ -456,34 +496,18 @@ void create_bitmap_for_node(char * new_node_name, int blocks) {
 /**
  * @NAME load_bitmap_node
  */
-int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, char * node_ip_port, int blocks) {
-
-	t_fs_node * node;
-	bool loaded = false;
-	int index = 0;
-	while (index < (nodes_list->elements_count)) {
-		node = (t_fs_node *) list_get(nodes_list, index);
-		if (strcmp(node_name, (node->node_name)) == 0) {
-			loaded = true;
-			break;
-		}
-		index++;
-	}
-
-	if (loaded)
-		return ALREADY_CONNECTED;
+void load_bitmap_node(int * node_fd, char * node_name, char * node_ip_port, int blocks) {
 
 	char * bitmap_file_path = string_from_format("%s/metadata/bitmaps/%s.bin", (fs_conf->mount_point), node_name);
 	t_bitarray * bitmap = bitarray_create_with_mode(map_file(bitmap_file_path, O_RDWR), blocks, MSB_FIRST);
-	if (clean_bitmap) {
-		int pos = 0;
-		while (pos < blocks) {
-			bitarray_clean_bit(bitmap, pos);
-			pos++;
-		}
+
+	int pos = 0;
+	while (pos < blocks) {
+		bitarray_clean_bit(bitmap, pos);
+		pos++;
 	}
 
-	node = (t_fs_node *) malloc(sizeof(t_fs_node));
+	t_fs_node * node = (t_fs_node *) malloc(sizeof(t_fs_node));
 	node->node_name = string_duplicate(node_name);
 	node->ip_port = string_duplicate(node_ip_port);
 	node->bitmap = bitmap;
@@ -491,7 +515,6 @@ int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, char * 
 	node->fd = * node_fd;
 	list_add(nodes_list, node);
 	free(bitmap_file_path);
-	return SUCCESS;
 }
 
 /**
@@ -499,10 +522,7 @@ int load_bitmap_node(int * node_fd, bool clean_bitmap, char * node_name, char * 
  */
 void check_fs_status(void) {
 
-	if ((nodes_list->elements_count) < 1) {
-		status = UNSTEADY; // at least two connected nodes
-		return;
-	}
+	pthread_mutex_lock(&nodes_table_m_lock);
 
 	bool empty_dir;
 	bool all_nodes_connected;
@@ -526,7 +546,7 @@ void check_fs_status(void) {
 	while (index < DIRECTORIES_AMOUNT) {
 		rw_lock_unlock(directories_locks, LOCK_READ, index);
 		empty_dir = true;
-		if (fs_dir->parent_dir >= 0) {
+		if (index == 0 || fs_dir->parent_dir >= 0) {
 			dir_path = string_from_format("%s/metadata/archivos/%d", (fs_conf->mount_point), index);
 			dir = opendir(dir_path);
 			while ((ent = readdir(dir)) != NULL) {
@@ -580,6 +600,8 @@ void check_fs_status(void) {
 		fs_dir++;
 	}
 	status = STEADY;
+
+	pthread_mutex_unlock(&nodes_table_m_lock);
 }
 
 /**
@@ -650,7 +672,10 @@ void get_metadata_file(int * client_socket) {
 
 	pthread_mutex_lock(&nodes_table_m_lock);
 
+	bool corrupted_block;
 	while (config_has_property(md_file_cfg, bytes_key)) {
+
+		corrupted_block = true;
 
 		block_md = (t_fs_file_block_metadata *) malloc(sizeof(t_fs_file_block_metadata));
 		block_md->file_block = block;
@@ -663,6 +688,7 @@ void get_metadata_file(int * client_socket) {
 			if (config_has_property(md_file_cfg, cpy_key)) {
 				data = config_get_array_value(md_file_cfg, cpy_key);
 				if (get_datanode_fd(data[0]) != DISCONNECTED_NODE) {
+					corrupted_block = false;
 					copy_md = (t_fs_copy_block *) malloc(sizeof(t_fs_copy_block));
 					strcpy(&(copy_md->node), data[0]);
 					strcpy(&(copy_md->ip_port), get_datanode_ip_port(data[0]));
@@ -677,15 +703,22 @@ void get_metadata_file(int * client_socket) {
 			cpy++;
 		}
 		list_add((md_file->block_list), block_md);
-
 		free(bytes_key);
+
 		block++;
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
+
+		if (corrupted_block)
+			break;
 	}
 	free(bytes_key);
 	pthread_mutex_unlock(&nodes_table_m_lock);
 
-	fs_get_metadata_file_send_resp(client_socket, SUCCESS, md_file);
+	if (corrupted_block) {
+		fs_get_metadata_file_send_resp(client_socket, CORRUPTED_FILE, NULL);
+	} else {
+		fs_get_metadata_file_send_resp(client_socket, SUCCESS, md_file);
+	}
 
 	int index = 0;
 	while (index < (md_file->block_list->elements_count)) {
@@ -1041,6 +1074,13 @@ int assign_blocks_to_file(t_config ** file, int dir_index, char * file_name, cha
 }
 
 /**
+ * @NAME is_disconnected
+ */
+bool is_disconnected(t_fs_node * node) {
+	return (dn_ping((node->fd), logger) == DISCONNECTED_SERVER);
+}
+
+/**
  * @NAME check_fs_space
  */
 int check_fs_space(t_list * required_blocks) {
@@ -1088,7 +1128,8 @@ char * pre_assign_node(char * unwanted_node) {
 		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
 			index++;
 		} else {
-			if (((node->free_blocks) > 0) && ((!selected_node) || ((node->free_blocks) > (selected_node->free_blocks)))) {
+			if (((node->free_blocks) > 0) && ((!selected_node) || ((node->free_blocks) > (selected_node->free_blocks)))
+					&& (get_datanode_fd(node->node_name) != DISCONNECTED_NODE)) {
 				selected_node = node;
 			}
 			index++;
@@ -1117,15 +1158,18 @@ char * assign_node(char * unwanted_node) {
 		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
 			index++;
 		} else {
-			key = string_from_format("%sLibre", (node->node_name));
-			free_blocks = config_get_int_value(nodes_table, key);
-			if ((free_blocks > 0) && ((max < 0) || (free_blocks > max))) {
-				if (selected_node)
-					free(selected_node);
-				max = free_blocks;
-				selected_node = string_duplicate(node->node_name);
+			if ((node->fd) >= 0) {
+				// connected_node
+				key = string_from_format("%sLibre", (node->node_name));
+				free_blocks = config_get_int_value(nodes_table, key);
+				free(key);
+				if ((free_blocks > 0) && ((max < 0) || (free_blocks > max))) {
+					if (selected_node)
+						free(selected_node);
+					max = free_blocks;
+					selected_node = string_duplicate(node->node_name);
+				}
 			}
-			free(key);
 			index++;
 		}
 	}
@@ -1209,7 +1253,14 @@ int get_datanode_fd(char * node_name) {
 	while (index < (nodes_list->elements_count)) {
 		node = (t_fs_node *) list_get(nodes_list, index);
 		if (strcmp(node_name, (node->node_name)) == 0) {
-			return node->fd;
+			if ((node->fd) < 0) {
+				return DISCONNECTED_NODE;
+			} else if (is_disconnected(node)) {
+				node->fd = -1;
+				return DISCONNECTED_NODE;
+			} else {
+				return node->fd;
+			}
 		}
 		index++;
 	}
@@ -1316,13 +1367,18 @@ int cpy_to_local_dir(char * md_file_path, char * local_dir, char * yamafs_file) 
 			cpy++;
 		}
 
-		bytes = config_get_int_value(md_file, bytes_key);
-		dn_block = dn_get_block(datanode_fd, node_block, logger);
-		fwrite((dn_block->buffer), bytes, 1, fs_file);
-		readed_bytes += bytes;
+		if (datanode_fd == DISCONNECTED_NODE) {
+			break;
+		} else {
+			bytes = config_get_int_value(md_file, bytes_key);
+			dn_block = dn_get_block(datanode_fd, node_block, logger);
+			fwrite((dn_block->buffer), bytes, 1, fs_file);
+			readed_bytes += bytes;
 
-		free(dn_block->buffer);
-		free(dn_block);
+			free(dn_block->buffer);
+			free(dn_block);
+		}
+
 		free(bytes_key);
 		block++;
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
@@ -1684,6 +1740,9 @@ void ls(char * dir_path) {
 		return;
 	}
 
+	printf("drwxrwxr-x .\n");
+	printf("drwxrwxr-x ..\n");
+
 	char * yamafs_dir_path = string_from_format("%s/metadata/archivos/%d", (fs_conf->mount_point), dir_index);
 	struct dirent * ent;
 	DIR * yamafs_dir = opendir(yamafs_dir_path);
@@ -1779,13 +1838,13 @@ void format() {
 	free(data_bin_path);
 	free(temp_data_bin_path);
 
-	t_fs_node * connected_node;
+	t_fs_node * loaded_node;
 	index = 0;
 	while (index < (nodes_list->elements_count)) {
-		connected_node = (t_fs_node *) list_get(nodes_list, index);
+		loaded_node = (t_fs_node *) list_get(nodes_list, index);
 		pos = 0;
-		while (pos < (connected_node->size)) {
-			bitarray_clean_bit((connected_node->bitmap), pos);
+		while (pos < (loaded_node->size)) {
+			bitarray_clean_bit((loaded_node->bitmap), pos);
 			pos++;
 		}
 		index++;
@@ -1955,41 +2014,33 @@ void rm_file(char * file_path) {
  * @NAME add_to_release_list
  */
 void add_to_release_list(t_list * release_list, char * node) {
-	t_fs_node * connected_node;
+	t_fs_to_release * to_release;
 	int index = 0;
-	while (index < (nodes_list->elements_count)) {
-		connected_node = (t_fs_node *) list_get(nodes_list, index);
-		if (strcmp(node, (connected_node->node_name)) == 0) {
-			t_fs_to_release * to_release;
-			index = 0;
-			while (index < (release_list->elements_count)) {
-				to_release = (t_fs_to_release *) list_get(release_list, index);
-				if (strcmp(node, (to_release->node)) == 0) {
-					(to_release->blocks)++;
-					return;
-				}
-				index++;
-			}
-			to_release = malloc(sizeof(t_fs_to_release));
-			to_release->node = string_duplicate(node);
-			to_release->blocks = 1;
-			list_add(release_list, to_release);
+	while (index < (release_list->elements_count)) {
+		to_release = (t_fs_to_release *) list_get(release_list, index);
+		if (strcmp(node, (to_release->node)) == 0) {
+			(to_release->blocks)++;
 			return;
 		}
 		index++;
 	}
+	to_release = malloc(sizeof(t_fs_to_release));
+	to_release->node = string_duplicate(node);
+	to_release->blocks = 1;
+	list_add(release_list, to_release);
+	return;
 }
 
 /**
  * @NAME free_node_block
  */
 void free_node_block(char * node, int block) {
-	t_fs_node * connected_node;
+	t_fs_node * loaded_node;
 	int index = 0;
 	while (index < (nodes_list->elements_count)) {
-		connected_node = (t_fs_node *) list_get(nodes_list, index);
-		if (strcmp(node, (connected_node->node_name)) == 0) {
-			bitarray_clean_bit((connected_node->bitmap), block);
+		loaded_node = (t_fs_node *) list_get(nodes_list, index);
+		if (strcmp(node, (loaded_node->node_name)) == 0) {
+			bitarray_clean_bit((loaded_node->bitmap), block);
 			return;
 		}
 		index++;
@@ -2279,9 +2330,12 @@ void rm_dir(char * dir_path) {
  */
 void cpblock(char * file_path, int file_block, char * node) {
 
-	int datanode_fd = get_datanode_fd(node);
-	if (datanode_fd == DISCONNECTED_NODE) {
-		printf("error: disconnected node.\nplease try again...\n");
+	pthread_mutex_lock(&nodes_table_m_lock);
+
+	int dest_dn_fd = get_datanode_fd(node);
+	if (dest_dn_fd == DISCONNECTED_NODE) {
+		pthread_mutex_unlock(&nodes_table_m_lock);
+		printf("error: disconnected destination node.\nplease try again...\n");
 		return;
 	}
 
@@ -2292,6 +2346,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 
 	int dir_index = get_dir_index(yamafs_dir, LOCK_WRITE, NULL);
 	if (dir_index == ENOTDIR) {
+		pthread_mutex_unlock(&nodes_table_m_lock);
 		free(base_c);
 		free(dir_c);
 		printf("error: file doesn't exist.\nplease try again...\n");
@@ -2301,6 +2356,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 	struct stat sb;
 	char * md_file_path = string_from_format("%s/metadata/archivos/%d/%s", (fs_conf->mount_point), dir_index, yamafs_file);
 	if ((stat(md_file_path, &sb) < 0) || (stat(md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
+		pthread_mutex_unlock(&nodes_table_m_lock);
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 		free(md_file_path);
 		free(base_c);
@@ -2328,6 +2384,7 @@ void cpblock(char * file_path, int file_block, char * node) {
 	free(cpy_key);
 
 	if (last_cpy < 0) {
+		pthread_mutex_unlock(&nodes_table_m_lock);
 		config_destroy(md_file);
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 		free(md_file_path);
@@ -2340,7 +2397,6 @@ void cpblock(char * file_path, int file_block, char * node) {
 	//
 	// node table update
 	//
-	pthread_mutex_lock(&nodes_table_m_lock);
 	char * key = string_from_format("%sLibre", node);
 	int free_blocks = config_get_int_value(nodes_table, key);
 
@@ -2356,6 +2412,28 @@ void cpblock(char * file_path, int file_block, char * node) {
 		return;
 	}
 
+	cpy_key = string_from_format("BLOQUE%dCOPIA%d", file_block, last_cpy);
+	char ** data = config_get_array_value(md_file, cpy_key);
+	free(cpy_key);
+
+	int source_dn_fd = get_datanode_fd(data[0]);
+	if (source_dn_fd == DISCONNECTED_NODE) {
+		pthread_mutex_unlock(&nodes_table_m_lock);
+		config_destroy(md_file);
+		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
+		free(key);
+		free(data[0]);
+		free(data[1]);
+		free(data);
+		free(md_file_path);
+		free(base_c);
+		free(dir_c);
+		printf("error: disconnected source node.\nplease try again...\n");
+		return;
+	}
+
+	int assigned_block = assign_node_block(node);
+
 	char * value_str = string_itoa((config_get_int_value(nodes_table, key)) - 1);
 	config_set_value(nodes_table, key, value_str);
 	free(value_str);
@@ -2367,20 +2445,15 @@ void cpblock(char * file_path, int file_block, char * node) {
 	free(value_str);
 	config_save(nodes_table);
 
-	int assigned_block = assign_node_block(node);
-
-	pthread_mutex_unlock(&nodes_table_m_lock);
-
-	cpy_key = string_from_format("BLOQUE%dCOPIA%d", file_block, last_cpy);
-	char ** data = config_get_array_value(md_file, cpy_key);
-	free(cpy_key);
-	t_dn_get_block_resp * dn_block = dn_get_block(get_datanode_fd(data[0]), atoi(data[1]), logger);
-	dn_set_block(datanode_fd, assigned_block, (dn_block->buffer), logger);
+	t_dn_get_block_resp * dn_block = dn_get_block(source_dn_fd, atoi(data[1]), logger);
+	dn_set_block(dest_dn_fd, assigned_block, (dn_block->buffer), logger);
 	free(dn_block->buffer);
 	free(dn_block);
 	free(data[0]);
 	free(data[1]);
 	free(data);
+
+	pthread_mutex_unlock(&nodes_table_m_lock);
 
 
 	//
@@ -2542,10 +2615,12 @@ void cat(char * file_path) {
 	t_dn_get_block_resp * dn_block;
 
 	int bytes;
+	int readed_bytes = 0;
 	int block = 0;
 	int cpy;
 	int datanode_fd;
 	int keys_amount = config_keys_amount(md_file);
+	int file_size = config_get_int_value(md_file, "TAMANIO");
 	int node_block;
 	int i;
 
@@ -2570,15 +2645,21 @@ void cat(char * file_path) {
 			cpy++;
 		}
 
-		bytes = config_get_int_value(md_file, bytes_key);
-		dn_block = dn_get_block(datanode_fd, node_block, logger);
+		if (datanode_fd == DISCONNECTED_NODE) {
+			break;
+		} else {
+			bytes = config_get_int_value(md_file, bytes_key);
+			dn_block = dn_get_block(datanode_fd, node_block, logger);
+			readed_bytes += bytes;
 
-		for (i = 0; i < bytes; i++) {
-			// printf("%s", dn_block->buffer[i]); // TODO: print
+			for (i = 0; i < bytes; i++) {
+				printf("%c", *((char *) (dn_block->buffer + i)));
+			}
+
+			free(dn_block->buffer);
+			free(dn_block);
 		}
 
-		free(dn_block->buffer);
-		free(dn_block);
 		free(bytes_key);
 		block++;
 		bytes_key = string_from_format("BLOQUE%dBYTES", block);
@@ -2590,6 +2671,11 @@ void cat(char * file_path) {
 	rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 	free(base_c);
 	free(dir_c);
+
+	if (readed_bytes != file_size) {
+		printf("error: corrupted yamafs file.\n");
+	}
+
 }
 
 

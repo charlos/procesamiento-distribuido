@@ -1,8 +1,6 @@
 #include "yama-prot.h"
 #include "socket.h"
 
-void closure_tt(t_transformacion *);
-void closure_a(t_almacenamiento *);
 void agregar_transformaciones(void *, int, t_list *);
 void agregar_reducciones_locales(void *, int, t_list *);
 void agregar_reducciones_globales(void *, int, t_list *);
