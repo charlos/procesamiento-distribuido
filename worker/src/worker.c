@@ -24,7 +24,7 @@ void * data_bin_mf_ptr;
 int main(int argc, char * argv[]) {
 
 	void* buffer;
-	int child_status;
+	//int child_status;
 	//int buffer_size;
 	uint8_t task_code;
 	char* script_filename = string_new();
@@ -40,8 +40,9 @@ int main(int argc, char * argv[]) {
 
 	listenning_socket = open_socket(SOCKET_BACKLOG, (worker_conf->worker_port));
 	while (1) {
+		uint16_t exec_code_recv;
 		new_socket = accept_connection(listenning_socket);
-
+		log_trace(logger, "Nuevo socket N° %d", new_socket);
 		//Recibo el código de operación para saber que tarea recibir
 		int received_bytes = socket_recv(&new_socket, &task_code, sizeof(uint8_t));
 
@@ -51,22 +52,25 @@ int main(int argc, char * argv[]) {
 		}
 		switch (task_code) {
 			case TRANSFORM_OC:{
-				buffer = transform_req_recv(&new_socket, logger);
+				buffer = transform_req_recv(new_socket, logger);
 				t_request_transformation* request = (t_request_transformation*)buffer;
-				request_send_resp(&new_socket, request->exec_code);
+				exec_code_recv = request->exec_code;
+				send_recv_status(new_socket, exec_code_recv);
 
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
 				buffer  = local_reduction_req_recv(new_socket, logger);
 				t_request_local_reduction* request = (t_request_local_reduction*)buffer;
-				request_send_resp(&new_socket, request->exec_code);
+				exec_code_recv = request->exec_code;
+				send_recv_status(new_socket, exec_code_recv);
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
-				buffer = global_reduction_req_recv(&new_socket, logger);
+				buffer = global_reduction_req_recv(new_socket, logger);
 				t_request_global_reduction * request = buffer;
-				request_send_resp(&new_socket, request->exec_code);
+				exec_code_recv = request->exec_code;
+				send_recv_status(new_socket, exec_code_recv);
 				break;
 			case STORAGE_OC:
 			//case REQUEST_TEMP_FILE:
@@ -75,25 +79,35 @@ int main(int argc, char * argv[]) {
 				break;
 		}
 
+		if(exec_code_recv == SUCCESS){
 
 		  if ((pid=fork()) == 0 ){
 			  log_trace(logger, "Proceso Hijo PID %d (PID del padre: %d)",getpid(),getppid());
 
-			  child_status = processRequest(task_code, buffer);
-			  task_response_send(&new_socket,task_code, child_status, logger);
+			  int child_status = processRequest(task_code, buffer);
+			  //child_status = SUCCESS;
+			  int resp_status = task_response_send(new_socket,task_code, child_status, logger);
 
-			  log_trace(logger, "WORKER - Fin de Proceso Hijo PID %d",getpid());
+			  if(resp_status==SUCCESS){
+				  log_trace(logger, "WORKER - El resultado de la etapa fue enviado a Master correctamente");
+			  }else{
+				 // log_error(logger,"WORKER - Error al enviar resultado de la etapa %d a Master: %d",task_code, new_socket);
+			  }
 
 			  // En la ejecución del hijo libero el buffer recibido cuando se termino de utilizar
 			  free_request(task_code, buffer);
-
+			  log_trace(logger, "WORKER - Fin de Proceso Hijo PID %d",getpid());
 			  //cierro el hijo
-		      exit(0);
-
+			  exit(0);
 		  }
 		  else {
+			    //Se cierra el socket en el padre
 				close(new_socket);
 		  }
+		}else{
+			//Worker no recibió bien el pedido de parte de Master
+			log_error(logger,"WORKER - Error al recibir pedido: %d", exec_code_recv);
+		}
 
 	}
 

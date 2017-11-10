@@ -46,7 +46,8 @@ typedef struct {
 void * map_file(char * file_path, int flags);
 void load_properties(char*);
 void create_script_file(char *script_filename, int script_size, void* script );
-size_t merge_two_files(FILE* file1, FILE* file2, char* result);
+void create_block_file(char *filename, int size, void* block );
+size_t merge_two_files(FILE* file1, FILE* file2, char** result);
 int processRequest(uint8_t task_code, void* pedido);
 void free_request(int task_code, void* buffer);
 void free_request_local_reduction(t_request_local_reduction* request);

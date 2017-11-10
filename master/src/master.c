@@ -133,6 +133,7 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 
 
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
+	send_recv_status(socket_worker, response_task->exec_code);
 
 	int result;
 	if(response_task->exec_code == DISCONNECTED_CLIENT) {
@@ -164,6 +165,7 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	local_reduction_req_send(socket_worker, respuesta->archivo_rl_temp, respuesta->archivos_temp, script_reduccion->filesize, script_reduccion->file, logger);
 	// TODO Manejar si el send salio mal
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
+	send_recv_status(socket_worker, response_task->exec_code);
 
 	int result;
 	if(response_task->exec_code == DISCONNECTED_CLIENT) {
@@ -330,7 +332,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 
 		// recibir respuesta de worker
 		t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
-
+		send_recv_status(nodo_enc_socket, response_task->exec_code);
 		// Enviar notificacion a YAMA
 
 		yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);

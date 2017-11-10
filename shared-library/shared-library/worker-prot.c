@@ -13,15 +13,6 @@
 #include "worker-prot.h"
 
 
-void request_send_resp(int * master_socket, int status) {
-	uint8_t resp_prot_code = 2;
-	int response_size = sizeof(char) * (resp_prot_code);
-	void * response = malloc(response_size);
-	memcpy(response, &status, resp_prot_code);
-	socket_write(master_socket, response, response_size);
-	free(response);
-}
-
 int transform_req_send(int worker_socket, int block, int used_size, char* result_file, int script_size, void* script, t_log * logger) {
 
 	uint8_t prot_ope_code = 1;
@@ -49,11 +40,11 @@ int transform_req_send(int worker_socket, int block, int used_size, char* result
 	socket_send(&worker_socket, request, msg_size, 0);
 	free(request);
 
-	uint8_t resp_prot_code = 2;
+	uint8_t resp_prot_code = sizeof(int16_t);
 	uint16_t code;
 	int received_bytes = socket_recv(&worker_socket, &code, resp_prot_code);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ SERVER %d >> disconnected", worker_socket);
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
 		return DISCONNECTED_SERVER;
 	}
 	return code;
@@ -61,7 +52,7 @@ int transform_req_send(int worker_socket, int block, int used_size, char* result
 }
 
 
-t_request_transformation * transform_req_recv(int * client_socket, t_log * logger) {
+t_request_transformation * transform_req_recv(int client_socket, t_log * logger) {
 	t_request_transformation * request = malloc(sizeof(t_request_transformation));
 
 	uint8_t prot_block = 4;
@@ -71,46 +62,46 @@ t_request_transformation * transform_req_recv(int * client_socket, t_log * logge
 
 	uint32_t result_file_size;
 
-	int received_bytes = socket_recv(client_socket, &(request->block), prot_block);
+	int received_bytes = socket_recv(&client_socket, &(request->block), prot_block);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
-	received_bytes = socket_recv(client_socket, &(request->used_size), prot_used_size);
+	received_bytes = socket_recv(&client_socket, &(request->used_size), prot_used_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
-	received_bytes = socket_recv(client_socket, &result_file_size, prot_result_file);
+	received_bytes = socket_recv(&client_socket, &result_file_size, prot_result_file);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
 	request->result_file = malloc(sizeof(char)*result_file_size);
 
-	received_bytes = socket_recv(client_socket, request->result_file, result_file_size);
+	received_bytes = socket_recv(&client_socket, request->result_file, result_file_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
-	received_bytes = socket_recv(client_socket, &(request->script_size), prot_script_size);
+	received_bytes = socket_recv(&client_socket, &(request->script_size), prot_script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 	request->script = malloc(sizeof(char) * request->script_size);
-	received_bytes = socket_recv(client_socket, request->script, request->script_size);
+	received_bytes = socket_recv(&client_socket, request->script, request->script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
@@ -144,11 +135,11 @@ int local_reduction_req_send(int worker_socket, char* temp_files, char* result_f
 	socket_send(&worker_socket, request, msg_size, 0);
 	free(request);
 
-	uint8_t resp_prot_code = 2;
-	int16_t code;
+	uint8_t resp_prot_code = sizeof(uint16_t);
+	uint16_t code;
 	int received_bytes = socket_recv(&worker_socket, &code, resp_prot_code);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ SERVER %d >> disconnected", worker_socket);
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
 		return DISCONNECTED_SERVER;
 	}
 	return code;
@@ -156,7 +147,7 @@ int local_reduction_req_send(int worker_socket, char* temp_files, char* result_f
 
 
 
-t_request_local_reduction * local_reduction_req_recv(int * client_socket, t_log * logger) {
+t_request_local_reduction * local_reduction_req_recv(int client_socket, t_log * logger) {
 	t_request_local_reduction * request = malloc(sizeof(t_request_local_reduction));
 
 	uint8_t prot_temp_files = 4;
@@ -166,48 +157,48 @@ t_request_local_reduction * local_reduction_req_recv(int * client_socket, t_log 
 	uint32_t result_file_size;
 	uint32_t temp_files_size;
 
-	int received_bytes = socket_recv(client_socket, &temp_files_size, prot_temp_files);
+	int received_bytes = socket_recv(&client_socket, &temp_files_size, prot_temp_files);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
 	request->temp_files = malloc(sizeof(char)*temp_files_size);
 
-	received_bytes = socket_recv(client_socket, &(request->temp_files), temp_files_size);
+	received_bytes = socket_recv(&client_socket, request->temp_files, temp_files_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
-	received_bytes = socket_recv(client_socket, &result_file_size, prot_result_file);
+	received_bytes = socket_recv(&client_socket, &result_file_size, prot_result_file);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
 	request->result_file = malloc(sizeof(char)*result_file_size);
 
-	received_bytes = socket_recv(client_socket, &(request->result_file), result_file_size);
+	received_bytes = socket_recv(&client_socket, request->result_file, result_file_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
-	received_bytes = socket_recv(client_socket, &(request->script_size), prot_script_size);
+	received_bytes = socket_recv(&client_socket, &(request->script_size), prot_script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 	request->script = malloc(sizeof(char) * request->script_size);
-	received_bytes = socket_recv(client_socket, request->script, request->script_size);
+	received_bytes = socket_recv(&client_socket, request->script, request->script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
@@ -252,17 +243,17 @@ int global_reduction_req_send(int worker_socket, int script_size, void *script, 
 	}
 	free(request);
 
-	uint8_t resp_prot_code = 2;
-	int code;
+	uint8_t resp_prot_code = sizeof(uint16_t);
+	uint16_t code;
 	int received_bytes = socket_recv(&worker_socket, &code, resp_prot_code);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ SERVER %d >> disconnected", worker_socket);
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
 		return DISCONNECTED_SERVER;
 	}
 	return code;
 }
 
-t_request_global_reduction *global_reduction_req_recv(int * client_socket, t_log * logger){
+t_request_global_reduction *global_reduction_req_recv(int client_socket, t_log * logger){
 	t_request_global_reduction *request = malloc(sizeof(t_request_global_reduction));
 
 	int received_bytes;
@@ -271,79 +262,104 @@ t_request_global_reduction *global_reduction_req_recv(int * client_socket, t_log
 
 	uint32_t *req_script_size = malloc(sizeof(uint32_t));
 
-	received_bytes = socket_recv(client_socket, req_script_size, prot_script_size);
+	received_bytes = socket_recv(&client_socket, req_script_size, prot_script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 
 	request->script = malloc(sizeof(char)* (*req_script_size));
 
-	received_bytes = socket_recv(client_socket, request->script, *req_script_size);
+	received_bytes = socket_recv(&client_socket, request->script, *req_script_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", * client_socket);
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
 	t_list *lista_nodos = list_create();
 
-	recv_reducciones_globales(*client_socket, lista_nodos, logger);
+	recv_reducciones_globales(client_socket, lista_nodos, logger);
 
 	request->lista_nodos_reduccion_global = lista_nodos;
 	request->exec_code = EXITO;
 	return request;
 }
 
-void task_response_send(int master_socket,int OC, int resp_code, t_log * logger){
-//  TODO agregar identificador de pedido para los casos en que un master haga dos pedidos al mismo Worker
-	uint8_t prot_OC = 2;
-	uint8_t prot_resp_code = 2;
+int task_response_send(int master_socket,uint8_t OC, int resp_code, t_log * logger){
+	//log_trace(logger, "Dentro de task_response_send");
+	uint8_t prot_OC = sizeof(uint8_t);
+	uint8_t prot_resp_code = sizeof(int);
 
-	int16_t  req_OC = OC;
-	int16_t  req_resp_code = resp_code;
+	int req_resp_code = resp_code;
+	uint8_t req_OC = OC;
 
-	int msg_size = sizeof(int) * 2;
+	int msg_size = prot_OC + prot_resp_code;
 	void * request = malloc(msg_size);
+
+	//log_trace(logger, "req_OC enviado --> %d",req_OC);
+	//log_trace(logger, "req_resp_code enviado --> %d",req_resp_code);
 
 	memcpy(request, &req_OC, prot_OC);
 	memcpy(request+prot_OC, &req_resp_code, prot_resp_code);
-
 	socket_send(&master_socket, request, msg_size, 0);
 	free(request);
 
-//	uint8_t resp_prot_code = 2;
-//	int16_t code;
-//	int received_bytes = socket_recv(&master_socket, &code, resp_prot_code);
-//	if (received_bytes <= 0) {
-//		if (logger) log_error(logger, "------ SERVER %d >> disconnected", master_socket);
-//		return DISCONNECTED_SERVER;
-//	}
-	//return code;
+	uint8_t resp_prot_code = sizeof(uint16_t);
+	uint16_t code=0;
+	int received_bytes = socket_recv(&master_socket, &code, resp_prot_code);
+
+	//log_trace(logger, "received_bytes = %d | codigo = %d",received_bytes,code);
+
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", master_socket);
+		return DISCONNECTED_SERVER;
+	}
+	return code;
 
 }
 
 t_response_task* task_response_recv(int worker_socket, t_log * logger){
-
-	uint8_t prot_OC = 2;
-	uint8_t prot_resp_code = 2;
+//	log_trace(logger, "Dentro de task_response_recv");
+	uint8_t prot_OC = sizeof(uint8_t);
+	uint8_t prot_resp_code = sizeof(int);
 
 	t_response_task*response = malloc(sizeof(t_response_task));
 
-	int received_bytes = socket_recv(&worker_socket, &(response->oc_code), prot_OC);
+	uint16_t oc_recv;
+
+	int received_bytes = socket_recv(&worker_socket, &oc_recv, prot_OC);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", worker_socket);
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
 		response->exec_code = DISCONNECTED_CLIENT;
 		return response;
 	}
+	response->oc_code=0;
+	response->oc_code=oc_recv;
+
+	//log_trace(logger, "OC recibida --> %d",response->oc_code);
 
 	received_bytes = socket_recv(&worker_socket, &(response->result_code), prot_resp_code);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ CLIENT %d >> disconnected", worker_socket);
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
 		response->exec_code = DISCONNECTED_CLIENT;
 		return response;
 	}
 
+	//log_trace(logger, "result_code recibido --> %d",response->result_code);
+
 	response->exec_code = SUCCESS;
 	return response;
+}
+
+
+void send_recv_status(int master_socket, int16_t status) {
+	//printf("Dentro de send_recv_status\n");
+	uint8_t response_size = sizeof(int16_t);
+	void * response = malloc(response_size);
+	memcpy(response, &status, response_size);
+
+	//printf("enviando resultado de la recepcion = %d\n",status);
+	socket_send(&master_socket, response, response_size, 0);
+	free(response);
 }
