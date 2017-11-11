@@ -60,5 +60,9 @@ void free_request(int task_code, void* buffer);
 void free_request_local_reduction(t_request_local_reduction* request);
 void free_request_transformation(t_request_transformation* request);
 bool quedan_datos_por_leer(t_list *lista);
+void leer_linea(t_estructura_loca_apareo *est_apareo);
+t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
+void merge_global(t_list *lista_reduc_global, char *archivo_propio);
+bool quedan_datos_por_leer(t_list *lista);
 
 #endif /* WORKER_H_ */

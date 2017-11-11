@@ -211,7 +211,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
-				merge_global(pedido);
+				merge_global(pedido, "[nombre-de-tmp-local-propio]");
 				break;
 			case STORAGE_OC:
 			//case REQUEST_TEMP_FILE:
@@ -321,13 +321,13 @@ void merge_global(t_list *lista_reduc_global, char *archivo_propio){
 
 	FILE *f, *g;
 	f = fopen(red_global->archivo_rg, "w+");
-	g = fopen("./nodo.cfg", "r");
+	g = fopen(archivo_propio, "r");
 	char *buffer, *linea_archivo_propio = NULL;
 	size_t size = 0;
 	getline(&linea_archivo_propio, &size, g);
 
 	t_estructura_loca_apareo *estructura_apareo_auxiliar = malloc(sizeof(t_estructura_loca_apareo));
-	int i, recibido;
+	int i;
 	list_iterate(lista, leer_linea);
 	while(quedan_datos_por_leer(lista)){
 		for(i = 0; i != list_size(lista); i++){
