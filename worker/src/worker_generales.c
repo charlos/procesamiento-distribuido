@@ -16,9 +16,9 @@ void load_properties(char * pathcfg) {
 	t_config * conf = config_create(pathcfg);
 	worker_conf = malloc(sizeof(t_worker_conf));
 	worker_conf->filesystem_ip = config_get_string_value(conf, "IP_FILESYSTEM");
-	worker_conf->filesystem_port = config_get_int_value(conf, "PUERTO_FILESYSTEM");
+	worker_conf->filesystem_port = config_get_string_value(conf, "PUERTO_FILESYSTEM");
 	worker_conf->nodo_name = config_get_string_value(conf, "NOMBRE_NODO");
-	worker_conf->worker_port = config_get_int_value(conf, "PUERTO_WORKER");
+	worker_conf->worker_port = config_get_string_value(conf, "PUERTO_WORKER");
 	worker_conf->databin_path = config_get_string_value(conf, "RUTA_DATABIN");
 	free(conf);
 }
@@ -211,8 +211,40 @@ int processRequest(uint8_t task_code, void* pedido){
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
-			case STORAGE_OC:
-			//case REQUEST_TEMP_FILE:
+			case STORAGE_OC:{
+				log_trace(logger, "WORKER - Dentro de Almacenamiento final");
+				t_request_storage_file * request = (t_request_storage_file*) pedido;
+				char* file_to_save = string_new();
+				string_append(&file_to_save, PATH);
+				string_append(&file_to_save, request->temp_file);
+
+				struct_file * archivo_a_enviar = read_file(file_to_save);
+				if(archivo_a_enviar!= NULL){
+					result= ERROR;
+					log_error(logger, "WORKER - Error al leer archivo final");
+					break;
+				}
+				int socket_filesystem = connect_to_socket(worker_conf->filesystem_ip, worker_conf->filesystem_port);
+
+				if(socket_filesystem==1){
+					result= ERROR;
+					log_error(logger, "WORKER - Error al conectar con Filesystem");
+					break;
+				}
+
+				status = fs_upload_file(socket_filesystem, request->final_file, "T", archivo_a_enviar->filesize, archivo_a_enviar->file, logger);
+
+				if (status==SUCCESS){
+					result = SUCCESS;
+				}else {
+					result= ERROR;
+					log_error(logger, "WORKER - Error al enviar el archivo al Filesystem (%d)",status);
+					break;
+				}
+				log_trace(logger, "WORKER - Almacenamiento finalizado (Status %d)", result);
+				break;
+			}
+			case REQUEST_TEMP_FILE:
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
@@ -221,18 +253,25 @@ int processRequest(uint8_t task_code, void* pedido){
 }
 
 struct_file * read_file(char * path) {
-	struct stat sb;
-		if ((stat(path, &sb) < 0) || (stat(path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
-			log_error(logger,"WORKER - No se pudo abrir el archivo: %s",path);
-			return NULL;
-		}
+	FILE * file;
+	struct stat st;
+	// este trim nose porque rompe
+//	string_trim(&path);
+	file = fopen(path, "r");
 
-	struct_file * file_struct = malloc(sizeof(struct_file));
-	file_struct->filesize =  sb.st_size;
-	file_struct->file = map_file(path, O_RDWR);
+	if (file) {
+//		fstat(file, &st);
+		fseek(file, 0L, SEEK_END);
+		size_t size = ftell(file); // st.st_size;
+		fseek(file, 0L, SEEK_SET);
+		struct_file * file_struct = malloc(sizeof(struct_file));
+		file_struct->filesize = size;
 
-	return file_struct;
-
+		file_struct->file = map_file(path, O_RDWR);
+		fclose(file);
+		return file_struct;
+	}
+	return NULL;
 }
 
 void free_request(int task_code, void* buffer){

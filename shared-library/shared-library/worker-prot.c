@@ -109,6 +109,84 @@ t_request_transformation * transform_req_recv(int client_socket, t_log * logger)
 	return request;
 }
 
+int final_storage_req_send(int worker_socket, char* temp_file, char* final_file, t_log * logger) {
+	uint8_t prot_ope_code = 1;
+	uint8_t prot_temp_file = 4;
+	uint8_t prot_final_file = 4;
+
+	uint8_t  req_ope_code = STORAGE_OC;
+	uint32_t req_temp_file = string_length(temp_file)+1;
+	uint32_t req_final_file = string_length(final_file)+1;
+
+	int msg_size = sizeof(char) * (prot_ope_code + prot_temp_file + req_temp_file + prot_final_file + req_final_file );
+	void * request = malloc(msg_size);
+
+	memcpy(request, &req_ope_code, prot_ope_code);
+	memcpy(request + prot_ope_code, &req_temp_file, prot_temp_file);
+	memcpy(request + prot_ope_code + prot_temp_file, temp_file, req_temp_file);
+	memcpy(request + prot_ope_code + prot_temp_file + req_temp_file, &req_final_file, prot_final_file);
+	memcpy(request + prot_ope_code + prot_temp_file + req_temp_file + prot_final_file, final_file, req_final_file);
+
+	socket_send(&worker_socket, request, msg_size, 0);
+	free(request);
+
+	uint8_t resp_prot_code = sizeof(uint16_t);
+	uint16_t code;
+	int received_bytes = socket_recv(&worker_socket, &code, resp_prot_code);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ WORKER %d >> disconnected", worker_socket);
+		return DISCONNECTED_SERVER;
+	}
+	return code;
+}
+
+t_request_storage_file * final_storage_req_recv(int client_socket, t_log * logger) {
+	t_request_storage_file * request = malloc(sizeof(t_request_storage_file));
+
+	uint8_t prot_temp_file = 4;
+	uint8_t prot_final_file = 4;
+
+	uint32_t final_file_size;
+	uint32_t temp_file_size;
+
+	int received_bytes = socket_recv(&client_socket, &temp_file_size, prot_temp_file);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+
+	request->temp_file = malloc(sizeof(char)*temp_file_size);
+
+	received_bytes = socket_recv(&client_socket, request->temp_file, temp_file_size);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+
+	received_bytes = socket_recv(&client_socket, &final_file_size, prot_final_file);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+
+	request->final_file = malloc(sizeof(char)*final_file_size);
+
+	received_bytes = socket_recv(&client_socket, request->final_file, final_file_size);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", client_socket);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+
+	request->exec_code = SUCCESS;
+	return request;
+}
+
+
+
 int local_reduction_req_send(int worker_socket, char* temp_files, char* result_file, int script_size, void* script, t_log * logger) {
 	// char* temp_files ---> cadena que contiene lista de los archivos separados por ";" para poder hacer un split luego
 

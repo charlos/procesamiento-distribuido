@@ -56,7 +56,6 @@ int main(int argc, char * argv[]) {
 				t_request_transformation* request = (t_request_transformation*)buffer;
 				exec_code_recv = request->exec_code;
 				send_recv_status(new_socket, exec_code_recv);
-
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
@@ -66,14 +65,21 @@ int main(int argc, char * argv[]) {
 				send_recv_status(new_socket, exec_code_recv);
 				break;
 			}
-			case REDUCE_GLOBAL_OC:
+			case REDUCE_GLOBAL_OC:{
 				buffer = global_reduction_req_recv(new_socket, logger);
-				t_request_global_reduction * request = buffer;
+				t_request_global_reduction * request = (t_request_global_reduction*) buffer;
 				exec_code_recv = request->exec_code;
 				send_recv_status(new_socket, exec_code_recv);
 				break;
-			case STORAGE_OC:
-			//case REQUEST_TEMP_FILE:
+			}
+			case STORAGE_OC:{
+				buffer = final_storage_req_recv(new_socket, logger);
+				t_request_storage_file * request = (t_request_storage_file*) buffer;
+				exec_code_recv = request->exec_code;
+				send_recv_status(new_socket, exec_code_recv);
+				break;
+			}
+			case REQUEST_TEMP_FILE:
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;

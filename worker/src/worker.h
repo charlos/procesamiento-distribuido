@@ -23,6 +23,7 @@
 #include <shared-library/generales.h>
 #include <shared-library/socket.h>
 #include <shared-library/worker-prot.h>
+#include <shared-library/file-system-prot.h>
 
 #define	SOCKET_BACKLOG 			100
 #define BLOCK_SIZE 			1048576
@@ -31,9 +32,9 @@
 
 typedef struct{
 	char* filesystem_ip;
-	u_int32_t filesystem_port;
+	char* filesystem_port;
 	char* nodo_name;
-	u_int32_t worker_port;
+	char* worker_port;
 	char* databin_path;
 }t_worker_conf;
 
@@ -52,5 +53,5 @@ int processRequest(uint8_t task_code, void* pedido);
 void free_request(int task_code, void* buffer);
 void free_request_local_reduction(t_request_local_reduction* request);
 void free_request_transformation(t_request_transformation* request);
-
+struct_file * read_file(char * path);
 #endif /* WORKER_H_ */
