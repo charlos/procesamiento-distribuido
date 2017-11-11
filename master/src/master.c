@@ -162,7 +162,7 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
 
 	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
-	local_reduction_req_send(socket_worker, respuesta->archivo_rl_temp, respuesta->archivos_temp, script_reduccion->filesize, script_reduccion->file, logger);
+	local_reduction_req_send(socket_worker, respuesta->archivos_temp, respuesta->archivo_rl_temp, script_reduccion->filesize, script_reduccion->file, logger);
 	// TODO Manejar si el send salio mal
 	t_response_task * response_task = task_response_recv(socket_worker, logger);
 	send_recv_status(socket_worker, response_task->exec_code);
@@ -178,7 +178,8 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	closure_rl(respuesta);
 	liberar_combo_ip(combo);
 
-	free(script_reduccion->file);
+
+	unmap_file(script_reduccion->file, script_reduccion->filesize);
 	free(script_reduccion);
 
 	gettimeofday(&tiempo_fin, NULL);
@@ -310,9 +311,8 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		break;
 	case REDUCCION_GLOBAL:
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
-			t_red_global * nodo = list_get(solicitud->planificados, i);
-			if(nodo->designado)break;
-			//TODO: liberar memoria
+			nodo_encargado = list_get(solicitud->planificados, i);
+			if(nodo_encargado->designado)break;
 		}
 		ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
 		nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
