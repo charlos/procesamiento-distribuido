@@ -28,8 +28,6 @@
 #define ROOT					0
 #define STEADY 					's'
 #define UNSTEADY				'u'
-#define BINARY 					'b'
-#define TEXT 					't'
 
 const char * CLEAN_FLAG = "-clean";
 
@@ -133,7 +131,11 @@ int main(int argc, char * argv[]) {
 				hs_result = connect_node(new_client, hs_req->node_name, hs_req->node_ip_port, hs_req->blocks);
 				fs_handshake_send_resp(new_client, hs_result);
 				if (hs_result == SUCCESS) {
-					check_fs_status();
+					if (status == UNSTEADY) {
+						pthread_mutex_lock(&nodes_table_m_lock);
+						check_fs_status();
+						pthread_mutex_unlock(&nodes_table_m_lock);
+					}
 				} else {
 					close_client(* new_client);
 					free(new_client);
@@ -522,8 +524,6 @@ void load_bitmap_node(int * node_fd, char * node_name, char * node_ip_port, int 
  */
 void check_fs_status(void) {
 
-	pthread_mutex_lock(&nodes_table_m_lock);
-
 	bool empty_dir;
 	bool all_nodes_connected;
 	bool at_least_one_copy;
@@ -600,8 +600,6 @@ void check_fs_status(void) {
 		fs_dir++;
 	}
 	status = STEADY;
-
-	pthread_mutex_unlock(&nodes_table_m_lock);
 }
 
 /**
@@ -2372,11 +2370,24 @@ void cpblock(char * file_path, int file_block, char * node) {
 	int last_cpy = -1;
 
 	char * cpy_key;
+	char ** data;
+	int source_dn_fd = -1;
+	int source_dn_block;
+
 
 	while (cpy < keys_amount) {
 		cpy_key = string_from_format("BLOQUE%dCOPIA%d", file_block, cpy);
-		if (config_has_property(md_file, cpy_key))
+		if (config_has_property(md_file, cpy_key)) {
 			last_cpy = cpy;
+			data = config_get_array_value(md_file, cpy_key);
+			if (source_dn_fd < 0 || source_dn_fd == DISCONNECTED_NODE) {
+				source_dn_fd = get_datanode_fd(data[0]);
+				source_dn_block = atoi(data[1]);
+			}
+			free(data[0]);
+			free(data[1]);
+			free(data);
+		}
 		free(cpy_key);
 		cpy++;
 		cpy_key = string_from_format("BLOQUE%dCOPIA%d", file_block, cpy);
@@ -2412,23 +2423,15 @@ void cpblock(char * file_path, int file_block, char * node) {
 		return;
 	}
 
-	cpy_key = string_from_format("BLOQUE%dCOPIA%d", file_block, last_cpy);
-	char ** data = config_get_array_value(md_file, cpy_key);
-	free(cpy_key);
-
-	int source_dn_fd = get_datanode_fd(data[0]);
 	if (source_dn_fd == DISCONNECTED_NODE) {
 		pthread_mutex_unlock(&nodes_table_m_lock);
 		config_destroy(md_file);
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 		free(key);
-		free(data[0]);
-		free(data[1]);
-		free(data);
 		free(md_file_path);
 		free(base_c);
 		free(dir_c);
-		printf("error: disconnected source node.\nplease try again...\n");
+		printf("error: all source nodes are disconnected.\nplease try again...\n");
 		return;
 	}
 
@@ -2445,13 +2448,10 @@ void cpblock(char * file_path, int file_block, char * node) {
 	free(value_str);
 	config_save(nodes_table);
 
-	t_dn_get_block_resp * dn_block = dn_get_block(source_dn_fd, atoi(data[1]), logger);
+	t_dn_get_block_resp * dn_block = dn_get_block(source_dn_fd, source_dn_block, logger);
 	dn_set_block(dest_dn_fd, assigned_block, (dn_block->buffer), logger);
 	free(dn_block->buffer);
 	free(dn_block);
-	free(data[0]);
-	free(data[1]);
-	free(data);
 
 	pthread_mutex_unlock(&nodes_table_m_lock);
 

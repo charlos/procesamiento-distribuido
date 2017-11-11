@@ -23,7 +23,7 @@ void get_block(void);
 void create_logger(void);
 
 int main(int argc, char * argv[]) {
-	load_dn_properties(argv[1]); // TODO
+	load_dn_properties(argv[1]); // TODO: ¿el archivo properties se pasa por parámetro?
 	create_logger();
 	init();
 
@@ -52,7 +52,6 @@ int main(int argc, char * argv[]) {
  * @NAME load_dn_properties
  */
 void load_dn_properties(char * cfg_path) {
-	//t_config * conf = config_create("/home/utnso/node.cfg"); // TODO
 	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = string_duplicate(config_get_string_value(conf, "NOMBRE_NODO"));
