@@ -29,7 +29,15 @@ void create_script_file(char *script_filename, int script_size, void* script ){
 	fwrite(script, sizeof(char), script_size, fptr);
 	fflush(fptr);
 	fclose(fptr);
-	//free(buffer);
+	chmod(script_filename, 0777);
+}
+
+void create_block_file(char *filename, int size, void* block ){
+	FILE* fptr = fopen(filename, "w+");
+	fwrite(block, sizeof(char), size, fptr);
+	fflush(fptr);
+	fclose(fptr);
+	chmod(filename, 0777);
 }
 
 int merge_temp_files(char** temp_files, char* result_file){
@@ -52,12 +60,13 @@ int merge_temp_files(char** temp_files, char* result_file){
 	    	log_error(logger, "WORKER - Apareo - Error al abrir archivo temporal");
 	    	return 1;
 	    }
-		lenght_result = merge_two_files(file_temp, file_aux, result);
+		lenght_result = merge_two_files(file_temp, file_aux, &result);
 		fclose(file_temp);
 		free(path_file_temp);
 		path_file_temp = string_new();
 		fwrite(result, sizeof(char), lenght_result, file_aux);
 		free(result);
+		result = string_new();
 		rewind(file_aux);
 		i++;
 	}
@@ -65,7 +74,7 @@ int merge_temp_files(char** temp_files, char* result_file){
 	return 0;
 }
 
-size_t merge_two_files(FILE* file1, FILE* file2, char* result){
+size_t merge_two_files(FILE* file1, FILE* file2, char** result){
     char * line1 = NULL;
     char * line2 = NULL;
 	size_t len1 = 0;
@@ -81,15 +90,15 @@ size_t merge_two_files(FILE* file1, FILE* file2, char* result){
 	while(!feof(file1) || !feof(file2)){
 		if(feof(file2) || (!feof(file1) && strcmp(line1, line2)<0)){
 			//fprintf(result_file, "%s", line1);
-			string_append(&result, line1);
-			lenght_result+=len1;
-			free(line1);
+			string_append(result, line1);
+			lenght_result+=strlen(line1);
+			//free(line1);
 			read1 = getline(&line1, &len1, file1);
 		}else{
 			//fprintf(result_file, "%s", line2);
-			string_append(&result, line2);
-			lenght_result+=len2;
-			free(line2);
+			string_append(result, line2);
+			lenght_result+=strlen(line2);
+			//free(line2);
 			read2 = getline(&line2, &len2, file2);
 		}
 	}
@@ -101,12 +110,13 @@ int processRequest(uint8_t task_code, void* pedido){
 	void* buffer;
 	int buffer_size;
 	int status;
+	int result;
 	char* script_filename = string_new();
 	string_append(&script_filename,PATH);
 	string_append(&script_filename,"script.sh");
 
 	char* instruccion = string_new();
-		switch (task_code) {
+	switch (task_code) {
 			case TRANSFORM_OC:{
 				t_request_transformation* request = (t_request_transformation*)pedido;
 				if (request->exec_code == SUCCESS){
@@ -119,48 +129,84 @@ int processRequest(uint8_t task_code, void* pedido){
 					//mapeo el archivo data.bin
 					data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDWR); //O_RDONLY
 					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (request->block)), buffer_size);
+					char* filename = string_new();
+					string_append(&filename,PATH);
+					string_append(&filename, "Block_");
+					//string_append(&filename, temporal_get_string_time());
+					//string_append(&filename, request->block);
+					create_block_file(filename, buffer_size, buffer);
 
-					//compongo instrucción a ejecutar: script de transformacion + ordenar + guardar en archivo temp
-					string_append(&instruccion, "./");
+					//compongo instrucción a ejecutar: cat del archivo + script de transformacion + ordenar + guardar en archivo temp
+					string_append(&instruccion, " cat ");
+					string_append(&instruccion, filename);
+					string_append(&instruccion, " | sh ");
 					string_append(&instruccion, script_filename);
-					string_append(&instruccion, "|sort > ");
+					string_append(&instruccion, " | sort > ");
 					string_append(&instruccion, PATH);
 					string_append(&instruccion, request->result_file);
+					//string_append(&instruccion, "'");
 
-					FILE* input = popen (instruccion, "w");
-					if (!input){
-						log_error(logger, "WORKER - Transformación - Error al ejecutar");
-					    //return -1;
+					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
+
+					//Probamos con system
+					status = system(instruccion);
+					//status = system("strace /bin/ls > lalalala.txt");
+
+					//Prueba con Fork
+					//status = run_instruction(instruccion);
+
+					//TODO verificar la creacion del archivo para validad que salió ok
+					if (!status){
+						result = SUCCESS;
+					}else {
+						result= ERROR;
 					}
-					fwrite(buffer, sizeof(char), buffer_size, input);
-					status = pclose(input);
-					log_trace(logger, "WORKER - Transformación finalizada (Status %d)", status);
+
+					log_trace(logger, "WORKER - Transformación finalizada (Resultado %d)", result);
 
 				}
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
-
+				 log_trace(logger, "WORKER - Dentro de reduccion local");
 				t_request_local_reduction* request = (t_request_local_reduction*) pedido;
 
 				//Creo el archivo y guardo el script a ejecutar
 				create_script_file(script_filename, request->script_size, request->script );
 
-				char** temp_files = string_split(request->temp_files, " ");
-				merge_temp_files(temp_files, request->result_file);
+				//Pruebo hacer el merge directamente con sort en la misma instruccion
+				char** temp_files = string_split(request->temp_files, ";");
+				//merge_temp_files(temp_files, request->result_file);
+				string_append(&instruccion, " sort ");
+				int i = 0;
+				while(temp_files[i]!=NULL){
+					string_append(&instruccion,PATH);
+					string_append(&instruccion,temp_files[i]);
+					string_append(&instruccion, " ");
+					i++;
+				}
 
+				 log_trace(logger, "WORKER - merge realizado");
 				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
-				string_append(&instruccion, "cat ");
-				string_append(&instruccion, PATH);
-				string_append(&instruccion, request->result_file);
-				string_append(&instruccion, "| ./");
+				//string_append(&instruccion, "cat ");
+				//string_append(&instruccion, PATH);
+				//string_append(&instruccion, request->result_file);
+				string_append(&instruccion, "| ");
 				string_append(&instruccion, script_filename);
 				string_append(&instruccion, "|sort > ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, request->result_file);
+				//string_append(&instruccion, "'");
 
+				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 				status = system(instruccion);
-				log_trace(logger, "WORKER - Reducción local finalizada (Status %d)", status);
+
+				if (!status){
+					result = SUCCESS;
+				}else {
+					result= ERROR;
+				}
+				log_trace(logger, "WORKER - Reducción local finalizada (Status %d)", result);
 
 				break;
 			}
@@ -173,7 +219,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
 		}
-		return status;
+		return result;
 }
 
 struct_file * read_file(char * path) {
@@ -195,12 +241,12 @@ void free_request(int task_code, void* buffer){
 	switch (task_code) {
 		case TRANSFORM_OC:{
 			t_request_transformation* request = (t_request_transformation*)buffer;
-			free_request_local_reduction(request);
+			free_request_transformation(request);
 			break;
 		}
 		case REDUCE_LOCALLY_OC:{
 			t_request_local_reduction* request = (t_request_local_reduction*)buffer;
-			free_request_transformation(request);
+			free_request_local_reduction(request);
 			break;
 		}
 		case REDUCE_GLOBAL_OC:
@@ -255,7 +301,6 @@ void leer_linea(t_estructura_loca_apareo *est_apareo){
 	} else {
 
 	}
-
 }
 
 t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
@@ -318,5 +363,3 @@ bool quedan_datos_por_leer(t_list *lista){
 	}
 	return list_any_satisfy(lista, linea_no_nula);
 }
-
-

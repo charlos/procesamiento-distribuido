@@ -14,6 +14,8 @@
 #define DATANODE 			'd'
 #define YAMA				'y'
 #define WORKER 				'w'
+#define BINARY 				'b'
+#define TEXT 				't'
 #define	SUCCESS     				  	   1
 #define	ERROR							-200
 #define	DISCONNECTED_CLIENT			  	-201
