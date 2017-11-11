@@ -27,6 +27,21 @@ int main(int argc, char * argv[]) {
 	int child_status;
 	//int buffer_size;
 	uint8_t task_code;
+	// -----
+	t_red_global * r1,*r2,*r3;
+	r1 = malloc(sizeof(t_red_global));
+	r2 = malloc(sizeof(t_red_global));
+	r3 = malloc(sizeof(t_red_global));
+	r1->designado = 1;
+	r2->designado = 0;
+	r3->designado = 0;
+	r2->ip_puerto = string_duplicate("127.0.0.1:6000");
+	r3->ip_puerto = string_duplicate("127.0.0.1:6001");
+	t_list *lista = list_create();
+	list_add(lista, r1);
+	list_add(lista, r2);
+//	list_add(lista, r3);
+	merge_global(lista);
 	char* script_filename = string_new();
 	string_append(&script_filename,PATH);
 	string_append(&script_filename,"script.sh");
