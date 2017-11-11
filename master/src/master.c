@@ -309,10 +309,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 	case REDUCCION_GLOBAL:
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
 			t_red_global * nodo = list_get(solicitud->planificados, i);
-			if(nodo->designado) {
-				nodo_encargado = list_remove(solicitud->planificados, i);
-				break;
-			}
+			if(nodo->designado)break;
 			//TODO: liberar memoria
 		}
 		ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
