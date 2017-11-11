@@ -17,6 +17,7 @@
 #define REQUEST_TEMP_FILE		5
 #define REDUCE_GLOBAL_OC_N		6
 
+
 #define	SUCCESS							1
 #define	ERROR							-200
 #define	DISCONNECTED_CLIENT				-201
@@ -45,6 +46,12 @@ typedef struct{
 	t_list *lista_nodos_reduccion_global;
 	uint16_t exec_code;
 } t_request_global_reduction;
+
+typedef struct{
+	 char* temp_file;
+	 char* final_file;
+	 int16_t exec_code;
+} t_request_storage_file;
 
 typedef struct{
 	int oc_code; 		//Etapa realizada
@@ -88,6 +95,16 @@ int global_reduction_req_send(int worker_socket, int script_size, void *script, 
  * Recepción en Worker de solicitud de Etapa 3 (Reducción Global)
  */
 t_request_global_reduction *global_reduction_req_recv(int client_socket, t_log * logger);
+
+/*
+ * solicitud de Etapa 4 (Almacenamiento final) desde Master hacia Worker
+ */
+int final_storage_req_send(int worker_socket, char* temp_file, char* final_file, t_log * logger);
+
+/*
+ * Recepción en Worker de solicitud de Etapa 4 (Almacenamiento final)
+ */
+t_request_storage_file * final_storage_req_recv(int client_socket, t_log * logger);
 
 /*
  * Respuesta desde Worker hacia Master de resultado de una Etapa (solo responde un código, por lo que es la misma función para todas las etapas)
