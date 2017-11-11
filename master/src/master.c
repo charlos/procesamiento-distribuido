@@ -216,11 +216,6 @@ void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta){
 	free(respuesta);
 }
 
-void liberar_combo_ip(ip_port_combo *combo){
-	free(combo->ip);
-	free(combo->port);
-	free(combo);
-}
 t_estadisticas * inicializar_struct_estadisticas(int etapa) {
 	t_estadisticas * nueva_estadistica = malloc(sizeof(t_estadisticas));
 	nueva_estadistica->etapa = etapa;
@@ -316,10 +311,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 	case REDUCCION_GLOBAL:
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
 			t_red_global * nodo = list_get(solicitud->planificados, i);
-			if(nodo->designado) {
-				nodo_encargado = list_remove(solicitud->planificados, i);
-				break;
-			}
+			if(nodo->designado)break;
 			//TODO: liberar memoria
 		}
 		ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);

@@ -50,6 +50,7 @@ typedef struct {
 
 //AUX
 ip_port_combo * split_ipport(char * ipport);
+void liberar_combo_ip(ip_port_combo *combo);
 
 int yama_request_send(int * yama_socket, char * archivo_origen);
 int yama_request_recv(int * master_socket, char * archivo_origen_ptr);

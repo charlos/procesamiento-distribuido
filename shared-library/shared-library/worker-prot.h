@@ -15,6 +15,7 @@
 #define REDUCE_GLOBAL_OC		3
 #define STORAGE_OC				4
 #define REQUEST_TEMP_FILE		5
+#define REDUCE_GLOBAL_OC_N		6
 
 
 #define	SUCCESS							1
@@ -114,5 +115,6 @@ int task_response_send(int,uint8_t, int, t_log *);
  * Recepción de respuesta en Master del resultado de la etapa
  */
 t_response_task*  task_response_recv(int worker_socket, t_log * logger);
+void mandar_archivo_temporal(int fd, char *nombre_archivo);
 
 #endif /* WORKER_PROT_H_ */

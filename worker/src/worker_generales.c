@@ -18,7 +18,7 @@ void load_properties(char * pathcfg) {
 	worker_conf->filesystem_ip = config_get_string_value(conf, "IP_FILESYSTEM");
 	worker_conf->filesystem_port = config_get_string_value(conf, "PUERTO_FILESYSTEM");
 	worker_conf->nodo_name = config_get_string_value(conf, "NOMBRE_NODO");
-	worker_conf->worker_port = config_get_string_value(conf, "PUERTO_WORKER");
+	worker_conf->worker_port = config_get_int_value(conf, "PUERTO_WORKER");
 	worker_conf->databin_path = config_get_string_value(conf, "RUTA_DATABIN");
 	free(conf);
 }
@@ -211,6 +211,8 @@ int processRequest(uint8_t task_code, void* pedido){
 				break;
 			}
 			case REDUCE_GLOBAL_OC:
+				merge_global(pedido, "[nombre-de-tmp-local-propio]");
+				break;
 			case STORAGE_OC:{
 				log_trace(logger, "WORKER - Dentro de Almacenamiento final");
 				t_request_storage_file * request = (t_request_storage_file*) pedido;
@@ -244,7 +246,8 @@ int processRequest(uint8_t task_code, void* pedido){
 				log_trace(logger, "WORKER - Almacenamiento finalizado (Status %d)", result);
 				break;
 			}
-			case REQUEST_TEMP_FILE:
+			case REDUCE_GLOBAL_OC_N:
+				break;
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
@@ -325,4 +328,78 @@ void * map_file(char * file_path, int flags) {
 	return mapped_file_ptr;
 }
 
+void leer_linea(t_estructura_loca_apareo *est_apareo){
+	if(est_apareo->fd != 0){
+		socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
+		if(est_apareo->longitud_linea == 0){
+			est_apareo->linea = NULL;
+		}else {
+			est_apareo->linea = malloc(est_apareo->longitud_linea + 1);
+			socket_recv(&(est_apareo->fd), est_apareo->linea, est_apareo->longitud_linea);
+			est_apareo->linea[est_apareo->longitud_linea] = '\0';
+		}
+	} else {
 
+	}
+}
+
+t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
+	t_estructura_loca_apareo *apareo = malloc(sizeof(t_estructura_loca_apareo));
+
+	ip_port_combo* combo= split_ipport(red_global->ip_puerto);
+	apareo->fd = connect_to_socket(combo->ip, combo->port);
+	liberar_combo_ip(combo);
+	return apareo;
+}
+
+int es_designado(t_red_global *nodo){
+	return nodo->designado;
+}
+void merge_global(t_list *lista_reduc_global, char *archivo_propio){
+	t_red_global * red_global = list_remove_by_condition(lista_reduc_global, es_designado);
+	t_list *lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
+
+	FILE *f, *g;
+	f = fopen(red_global->archivo_rg, "w+");
+	g = fopen(archivo_propio, "r");
+	char *buffer, *linea_archivo_propio = NULL;
+	size_t size = 0;
+	getline(&linea_archivo_propio, &size, g);
+
+	t_estructura_loca_apareo *estructura_apareo_auxiliar = malloc(sizeof(t_estructura_loca_apareo));
+	int i;
+	list_iterate(lista, leer_linea);
+	while(quedan_datos_por_leer(lista)){
+		for(i = 0; i != list_size(lista); i++){
+			t_estructura_loca_apareo *apareo = list_get(lista, i);
+			if(estructura_apareo_auxiliar->linea == NULL || ((apareo->linea != NULL) && strcmp(apareo->linea, estructura_apareo_auxiliar->linea)<0)){
+				estructura_apareo_auxiliar = apareo;
+			}else{
+				// Se deja el apareo auxiliar como esta
+			}
+		}
+		if(linea_archivo_propio != NULL && strcmp(linea_archivo_propio, estructura_apareo_auxiliar->linea) < 0 ){
+			fwrite(linea_archivo_propio, sizeof(char), strlen(linea_archivo_propio), f);
+			if(getline(&linea_archivo_propio, &size, g) == -1){
+				free(linea_archivo_propio);
+				linea_archivo_propio = NULL;
+			}
+		}else{
+			buffer = string_duplicate(estructura_apareo_auxiliar->linea);
+			fwrite(buffer, sizeof(char), strlen(buffer), f);
+			free(estructura_apareo_auxiliar->linea);
+			free(buffer);
+			leer_linea(estructura_apareo_auxiliar);
+		}
+	}
+	char s = '\0';
+	fwrite(&s, sizeof(char), 1, f);
+	fclose(f);
+}
+
+bool quedan_datos_por_leer(t_list *lista){
+	int linea_no_nula(t_estructura_loca_apareo *estructura){
+		return estructura->linea != NULL;
+	}
+	return list_any_satisfy(lista, linea_no_nula);
+}

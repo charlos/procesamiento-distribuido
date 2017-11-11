@@ -24,6 +24,7 @@
 #include <shared-library/socket.h>
 #include <shared-library/worker-prot.h>
 #include <shared-library/file-system-prot.h>
+#include <shared-library/master-prot.h>
 
 #define	SOCKET_BACKLOG 			100
 #define BLOCK_SIZE 			1048576
@@ -34,7 +35,7 @@ typedef struct{
 	char* filesystem_ip;
 	char* filesystem_port;
 	char* nodo_name;
-	char* worker_port;
+	int worker_port;
 	char* databin_path;
 }t_worker_conf;
 
@@ -43,6 +44,12 @@ typedef struct {
 	void * file;
 	size_t filesize;
 } struct_file;
+
+typedef struct {
+	int fd;
+	int longitud_linea;
+	char *linea;
+} t_estructura_loca_apareo;
 
 void * map_file(char * file_path, int flags);
 void load_properties(char*);
@@ -54,4 +61,10 @@ void free_request(int task_code, void* buffer);
 void free_request_local_reduction(t_request_local_reduction* request);
 void free_request_transformation(t_request_transformation* request);
 struct_file * read_file(char * path);
+bool quedan_datos_por_leer(t_list *lista);
+void leer_linea(t_estructura_loca_apareo *est_apareo);
+t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
+void merge_global(t_list *lista_reduc_global, char *archivo_propio);
+bool quedan_datos_por_leer(t_list *lista);
+
 #endif /* WORKER_H_ */

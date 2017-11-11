@@ -79,7 +79,12 @@ int main(int argc, char * argv[]) {
 				send_recv_status(new_socket, exec_code_recv);
 				break;
 			}
-			case REQUEST_TEMP_FILE:
+			case REDUCE_GLOBAL_OC_N:
+				// worker NO designado
+				// TODO Mejorar protocolo de comunicacion aca. Esta cabeza
+				//TODO esto lo tiene que hacer dentro del fork, no en el worker padre
+				mandar_archivo_temporal(new_socket, "./temp");
+				break;
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
