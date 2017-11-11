@@ -83,7 +83,8 @@ int main(int argc, char * argv[]) {
 				// worker NO designado
 				// TODO Mejorar protocolo de comunicacion aca. Esta cabeza
 				//TODO esto lo tiene que hacer dentro del fork, no en el worker padre
-				mandar_archivo_temporal(new_socket, "./temp");
+				mandar_archivo_temporal(new_socket, "/home/utnso/yama/tmp");
+				exec_code_recv=0;
 				break;
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
@@ -118,6 +119,7 @@ int main(int argc, char * argv[]) {
 		}else{
 			//Worker no recibió bien el pedido de parte de Master
 			log_error(logger,"WORKER - Error al recibir pedido: %d", exec_code_recv);
+			//TODO cerra el socket
 		}
 
 	}

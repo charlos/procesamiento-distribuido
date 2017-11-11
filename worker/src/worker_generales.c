@@ -131,6 +131,7 @@ int processRequest(uint8_t task_code, void* pedido){
 					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (request->block)), buffer_size);
 					char* filename = string_new();
 					string_append(&filename,PATH);
+					//TODO generar nombre para cada bloque
 					string_append(&filename, "Block_");
 					//string_append(&filename, temporal_get_string_time());
 					//string_append(&filename, request->block);
@@ -149,7 +150,7 @@ int processRequest(uint8_t task_code, void* pedido){
 					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 
 					//Probamos con system
-					status = system(instruccion);
+					status = 0 ; //system(instruccion);
 					//status = system("strace /bin/ls > lalalala.txt");
 
 					//Prueba con Fork
@@ -199,7 +200,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				//string_append(&instruccion, "'");
 
 				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
-				status = system(instruccion);
+				status = 0; //system(instruccion);
 
 				if (!status){
 					result = SUCCESS;
@@ -210,9 +211,13 @@ int processRequest(uint8_t task_code, void* pedido){
 
 				break;
 			}
-			case REDUCE_GLOBAL_OC:
-				merge_global(pedido, "[nombre-de-tmp-local-propio]");
+			case REDUCE_GLOBAL_OC:{
+				t_request_global_reduction * request = (t_request_global_reduction*) pedido;
+				merge_global(request->lista_nodos_reduccion_global, "/home/utnso/yama/prueba_reduc_global.txt");
+				//TODO armar respuesta
+				result = SUCCESS;
 				break;
+			}
 			case STORAGE_OC:{
 				log_trace(logger, "WORKER - Dentro de Almacenamiento final");
 				t_request_storage_file * request = (t_request_storage_file*) pedido;
@@ -221,7 +226,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&file_to_save, request->temp_file);
 
 				struct_file * archivo_a_enviar = read_file(file_to_save);
-				if(archivo_a_enviar!= NULL){
+				if(archivo_a_enviar== NULL){
 					result= ERROR;
 					log_error(logger, "WORKER - Error al leer archivo final");
 					break;
@@ -234,7 +239,14 @@ int processRequest(uint8_t task_code, void* pedido){
 					break;
 				}
 
-				status = fs_upload_file(socket_filesystem, request->final_file, "T", archivo_a_enviar->filesize, archivo_a_enviar->file, logger);
+				status = fs_handshake(socket_filesystem,WORKER, NULL, NULL, NULL,  logger);
+				if (status!=SUCCESS){
+					result= ERROR;
+					log_error(logger, "WORKER - Error al hacer handshake con Filesystem (%d)",status);
+					break;
+				}
+				status = fs_upload_file(socket_filesystem, request->final_file, TEXT, archivo_a_enviar->filesize, archivo_a_enviar->file, logger);
+
 
 				if (status==SUCCESS){
 					result = SUCCESS;
@@ -348,6 +360,8 @@ t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
 
 	ip_port_combo* combo= split_ipport(red_global->ip_puerto);
 	apareo->fd = connect_to_socket(combo->ip, combo->port);
+	uint8_t OC = REDUCE_GLOBAL_OC_N;
+	socket_send(&(apareo->fd),&OC,sizeof(uint8_t),0);
 	liberar_combo_ip(combo);
 	return apareo;
 }
@@ -367,6 +381,7 @@ void merge_global(t_list *lista_reduc_global, char *archivo_propio){
 	getline(&linea_archivo_propio, &size, g);
 
 	t_estructura_loca_apareo *estructura_apareo_auxiliar = malloc(sizeof(t_estructura_loca_apareo));
+	estructura_apareo_auxiliar->linea = NULL;
 	int i;
 	list_iterate(lista, leer_linea);
 	while(quedan_datos_por_leer(lista)){
@@ -394,7 +409,9 @@ void merge_global(t_list *lista_reduc_global, char *archivo_propio){
 	}
 	char s = '\0';
 	fwrite(&s, sizeof(char), 1, f);
+	log_trace(logger, "Antes del fclose");
 	fclose(f);
+	log_trace(logger, "Despues del fclose");
 }
 
 bool quedan_datos_por_leer(t_list *lista){

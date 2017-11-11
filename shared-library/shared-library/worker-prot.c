@@ -452,6 +452,9 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo){
 	int aa = 0;
 //	memcpy(buffer + offset, &fin, sizeof(char));
 //	offset += sizeof(int);
+
+	buffer = realloc(buffer, len + sizeof(int));
+
 	memcpy(buffer + offset, &aa, sizeof(int));
 	int enviado = socket_send(&fd, buffer, len + sizeof(int), 0);
 }
