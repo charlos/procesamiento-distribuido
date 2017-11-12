@@ -213,7 +213,7 @@ int processRequest(uint8_t task_code, void* pedido){
 			}
 			case REDUCE_GLOBAL_OC:{
 				t_request_global_reduction * request = (t_request_global_reduction*) pedido;
-				merge_global(request->lista_nodos_reduccion_global, "/home/utnso/yama/prueba_reduc_global.txt");
+				merge_global(request->lista_nodos_reduccion_global);
 				//TODO armar respuesta
 				result = SUCCESS;
 				break;
@@ -258,8 +258,11 @@ int processRequest(uint8_t task_code, void* pedido){
 				log_trace(logger, "WORKER - Almacenamiento finalizado (Status %d)", result);
 				break;
 			}
-			case REDUCE_GLOBAL_OC_N:
+			case REDUCE_GLOBAL_OC_N:{
+				t_argumento_reduccion_global *argumento = pedido;
+				mandar_archivo_temporal(argumento->fd, argumento->resultado_reduccion_local);
 				break;
+			}
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;
@@ -369,16 +372,16 @@ t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
 int es_designado(t_red_global *nodo){
 	return nodo->designado;
 }
-void merge_global(t_list *lista_reduc_global, char *archivo_propio){
-	t_red_global * red_global = list_remove_by_condition(lista_reduc_global, es_designado);
+void merge_global(t_list *lista_reduc_global){
+	t_red_global *nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 	t_list *lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
 
-	FILE *f, *g;
-	f = fopen(red_global->archivo_rg, "w+");
-	g = fopen(archivo_propio, "r");
+	FILE *resultado_apareo_global, *temporal_reduccion_local;
+	resultado_apareo_global = fopen(nodo_designado->archivo_rg, "w+");
+	temporal_reduccion_local = fopen(nodo_designado->archivo_rl_temp, "r");
 	char *buffer, *linea_archivo_propio = NULL;
 	size_t size = 0;
-	getline(&linea_archivo_propio, &size, g);
+	getline(&linea_archivo_propio, &size, temporal_reduccion_local);
 
 	t_estructura_loca_apareo *estructura_apareo_auxiliar = malloc(sizeof(t_estructura_loca_apareo));
 	estructura_apareo_auxiliar->linea = NULL;
@@ -394,23 +397,23 @@ void merge_global(t_list *lista_reduc_global, char *archivo_propio){
 			}
 		}
 		if(linea_archivo_propio != NULL && strcmp(linea_archivo_propio, estructura_apareo_auxiliar->linea) < 0 ){
-			fwrite(linea_archivo_propio, sizeof(char), strlen(linea_archivo_propio), f);
-			if(getline(&linea_archivo_propio, &size, g) == -1){
+			fwrite(linea_archivo_propio, sizeof(char), strlen(linea_archivo_propio), resultado_apareo_global);
+			if(getline(&linea_archivo_propio, &size, temporal_reduccion_local) == -1){
 				free(linea_archivo_propio);
 				linea_archivo_propio = NULL;
 			}
 		}else{
 			buffer = string_duplicate(estructura_apareo_auxiliar->linea);
-			fwrite(buffer, sizeof(char), strlen(buffer), f);
+			fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
 			free(estructura_apareo_auxiliar->linea);
 			free(buffer);
 			leer_linea(estructura_apareo_auxiliar);
 		}
 	}
 	char s = '\0';
-	fwrite(&s, sizeof(char), 1, f);
+	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	log_trace(logger, "Antes del fclose");
-	fclose(f);
+	fclose(resultado_apareo_global);
 	log_trace(logger, "Despues del fclose");
 }
 

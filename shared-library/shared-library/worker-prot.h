@@ -58,6 +58,11 @@ typedef struct{
 	int16_t exec_code;		//Resultado de la recepción del mensaje
 } t_response_task;
 
+typedef struct{
+	char *local_reduction_filename;
+	int fd;
+	uint16_t exec_code;
+} t_request_local_reducion_filename;
 
 /*
  * Respuesta para confirmar recepción de mensaje
@@ -115,5 +120,7 @@ int task_response_send(int,uint8_t, int, t_log *);
  */
 t_response_task*  task_response_recv(int worker_socket, t_log * logger);
 void mandar_archivo_temporal(int fd, char *nombre_archivo);
+int local_reduction_file_req_send(int file_descriptor, char *local_reduction_filename);
+t_request_local_reducion_filename *local_reduction_file_req_recv(int file_descriptor, t_log *logger);
 
 #endif /* WORKER_PROT_H_ */

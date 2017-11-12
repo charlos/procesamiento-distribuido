@@ -51,6 +51,11 @@ typedef struct {
 	char *linea;
 } t_estructura_loca_apareo;
 
+typedef struct {
+	int fd;
+	char *resultado_reduccion_local;
+} t_argumento_reduccion_global;
+
 void * map_file(char * file_path, int flags);
 void load_properties(char*);
 void create_script_file(char *script_filename, int script_size, void* script );
@@ -64,7 +69,7 @@ struct_file * read_file(char * path);
 bool quedan_datos_por_leer(t_list *lista);
 void leer_linea(t_estructura_loca_apareo *est_apareo);
 t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
-void merge_global(t_list *lista_reduc_global, char *archivo_propio);
+void merge_global(t_list *lista_reduc_global);
 bool quedan_datos_por_leer(t_list *lista);
 
 #endif /* WORKER_H_ */

@@ -79,13 +79,16 @@ int main(int argc, char * argv[]) {
 				send_recv_status(new_socket, exec_code_recv);
 				break;
 			}
-			case REDUCE_GLOBAL_OC_N:
+			case REDUCE_GLOBAL_OC_N:{
 				// worker NO designado
 				// TODO Mejorar protocolo de comunicacion aca. Esta cabeza
 				//TODO esto lo tiene que hacer dentro del fork, no en el worker padre
-				mandar_archivo_temporal(new_socket, "/home/utnso/yama/tmp");
-				exec_code_recv=0;
+				t_request_local_reducion_filename* filename_struct = local_reduction_file_req_recv(new_socket, logger);
+				filename_struct->fd = new_socket;
+				buffer = filename_struct;
+				exec_code_recv=filename_struct->exec_code;
 				break;
+			}
 			default:
 				log_error(logger,"WORKER - Código de tarea inválido: %d", task_code);
 				break;

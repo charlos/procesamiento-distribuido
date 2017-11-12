@@ -469,3 +469,46 @@ void send_recv_status(int master_socket, int16_t status) {
 	socket_send(&master_socket, response, response_size, 0);
 	free(response);
 }
+
+int local_reduction_file_req_send(int file_descriptor, char *local_reduction_filename){
+	int prot_ope_code = 1;
+	int prot_filename_len = 2;
+
+	uint8_t  req_ope_code = REDUCE_GLOBAL_OC_N;
+	uint16_t filename_length = string_length(local_reduction_filename) + 1;
+
+	int buffer_size = prot_ope_code + prot_filename_len + filename_length;
+	void *buffer = malloc(buffer_size);
+	int offset = 0;
+	memcpy(buffer, &req_ope_code, prot_ope_code);
+	offset += prot_ope_code;
+	memcpy(buffer + offset, &filename_length, prot_filename_len);
+	offset += prot_filename_len;
+	memcpy(buffer + offset, local_reduction_filename, filename_length);
+
+	int enviado = socket_send(&file_descriptor, buffer, &buffer_size, 0);
+	if(enviado < buffer_size)return -1;
+	return 1;
+}
+
+t_request_local_reducion_filename *local_reduction_file_req_recv(int file_descriptor, t_log *logger){
+	t_request_local_reducion_filename *request = malloc(sizeof(t_request_local_reducion_filename));
+	int prot_filename_size = 2;
+
+	uint16_t filename_size;
+
+	int received_bytes = socket_recv(&file_descriptor, &filename_size, prot_filename_size);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", file_descriptor);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+	received_bytes = socket_recv(&file_descriptor, request->local_reduction_filename, filename_size);
+	if (received_bytes <= 0) {
+		if (logger) log_error(logger, "------ MASTER %d >> disconnected", file_descriptor);
+		request->exec_code = DISCONNECTED_CLIENT;
+		return request;
+	}
+	request->exec_code = SUCCESS;
+	return request;
+}
