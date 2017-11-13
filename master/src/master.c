@@ -36,7 +36,7 @@ int main(int argc, char ** argv) {
 	t_yama_planificacion_resp * respuesta_solicitud = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 	job_id = respuesta_solicitud->job_id;
 	// RECV LOOP
-	while(respuesta_solicitud->exec_code != ERROR && respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO && respuesta_solicitud->etapa != ALMACENAMIENTO_OK) {
+	while(respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO && respuesta_solicitud->etapa != ALMACENAMIENTO_OK) {
 		atender_solicitud(respuesta_solicitud);
 
 		respuesta_solicitud = yama_resp_planificacion(yama_socket, logger);
@@ -45,59 +45,7 @@ int main(int argc, char ** argv) {
 	gettimeofday(&tiempo_finalizacion, NULL);
 	elapsedTime = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
 
-	printf("Tiempo de ejecucion total: %d ms  \n", elapsedTime);
-
-	printf("ETAPA DE TRANSFORMACION\n");
-
-	t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
-	int promedio_transformacion = calcular_promedio(est_transformacion->tiempo_ejecucion_hilos);
-	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
-
-	printf("Cantidad total de tareas realizadas: %d\n", est_transformacion->cant_total_tareas);
-	printf("Cantidad máxima de tareas simultaneas: %d\n", est_transformacion->cant_max_tareas_simultaneas);
-	printf("Cantidad de fallos en la etapa: %d\n", est_transformacion->cant_fallos_job);
-
-	printf("ETAPA DE REDUCCION LOCAL\n");
-
-	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
-	int promedio_reduccion_local = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
-	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
-
-	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_local->cant_total_tareas);
-	printf("Cantidad máxima de tareas simultaneas: %d\n", est_reduccion_local->cant_max_tareas_simultaneas);
-	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_local->cant_fallos_job);
-
-	printf("ETAPA DE REDUCCION GLOBAL\n");
-
-	t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
-	int promedio_reduccion_global = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
-	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_global);
-
-	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_global->cant_total_tareas);
-	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_global->cant_fallos_job);
-
-
-	/*
-	 * 		|																				|
-	 * 		|	Esto va a volar, lo dejo para reutilizar en atender solicitud	(mas abajo)	|
-	 * 		v																				v
-	 */
-	if(respuesta_solicitud->exec_code == ERROR) { //TODO: MANEJO DE ERRORES
-		printf("Hubo un error");
-		exit(0);
-	} else if(respuesta_solicitud->etapa == REDUCCION_LOCAL) {
-
-		t_yama_planificacion_resp * respuesta_reduccion = respuesta_solicitud;
-		while(respuesta_reduccion->exec_code == EXITO && respuesta_reduccion->etapa == REDUCCION_LOCAL) {
-			int i;
-			for(i = 0; i < list_size(respuesta_reduccion->planificados); i++) {
-				// obtener cada t_reduccion_local
-				// crear hilo de reduccion local
-			}
-			// recibir resultado
-		}
-	}
-
+	imprimir_estadisticas(elapsedTime);
 	return EXIT_SUCCESS;
 }
 master_cfg * crear_config() {
@@ -273,6 +221,32 @@ void crear_hilo_reduccion_local(t_red_local *reduccion){
 	pthread_attr_destroy(&attr);
 
 }
+
+void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
+	int i, nodo_enc_socket;
+	t_red_global * nodo_encargado;
+	for(i = 0; i < list_size(solicitud->planificados); i++) {
+		nodo_encargado = list_get(solicitud->planificados, i);
+		if(nodo_encargado->designado)break;
+	}
+	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
+	nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
+	liberar_combo_ip(ip_port);
+	struct_file * file = read_file(pedido->ruta_reduc);
+
+	// Se envia script y lista de nodos a worker designado
+	global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
+
+	// recibir respuesta de worker
+	t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
+	send_recv_status(nodo_enc_socket, response_task->exec_code);
+	// Enviar notificacion a YAMA
+
+	yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
+	free(response_task);
+	free(file->file);
+	free(file);
+}
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
 	respuesta_yama_transform *transformacion_master = malloc(sizeof(respuesta_yama_transform));
 	transformacion_master->archivo_temporal = transformacion_yama->archivo_temporal;
@@ -310,27 +284,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		est_reduccion_local->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_reduccion_local->cant_max_tareas_simultaneas);
 		break;
 	case REDUCCION_GLOBAL:
-		for(i = 0; i < list_size(solicitud->planificados); i++) {
-			nodo_encargado = list_get(solicitud->planificados, i);
-			if(nodo_encargado->designado)break;
-		}
-		ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
-		nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
-		liberar_combo_ip(ip_port);
-		struct_file * file = read_file(pedido->ruta_reduc);
-
-		// Se envia script y lista de nodos a worker designado
-		global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
-
-		// recibir respuesta de worker
-		t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
-		send_recv_status(nodo_enc_socket, response_task->exec_code);
-		// Enviar notificacion a YAMA
-
-		yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
-		free(response_task);
-		free(file->file);
-		free(file);
+		resolver_reduccion_global(solicitud);
 		list_iterate(solicitud->planificados, closure_rg);
 		closure_rg(nodo_encargado);
 		break;
@@ -382,4 +336,37 @@ int traducir_respuesta(int respuesta, int etapa) {
 			break;
 		}
 	}
+}
+
+void imprimir_estadisticas(int elapsedTime){
+	printf("Tiempo de ejecucion total: %d ms  \n", elapsedTime);
+
+	printf("ETAPA DE TRANSFORMACION\n");
+
+	t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
+	int promedio_transformacion = calcular_promedio(est_transformacion->tiempo_ejecucion_hilos);
+	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
+
+	printf("Cantidad total de tareas realizadas: %d\n", est_transformacion->cant_total_tareas);
+	printf("Cantidad máxima de tareas simultaneas: %d\n", est_transformacion->cant_max_tareas_simultaneas);
+	printf("Cantidad de fallos en la etapa: %d\n", est_transformacion->cant_fallos_job);
+
+	printf("ETAPA DE REDUCCION LOCAL\n");
+
+	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
+	int promedio_reduccion_local = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
+	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
+
+	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_local->cant_total_tareas);
+	printf("Cantidad máxima de tareas simultaneas: %d\n", est_reduccion_local->cant_max_tareas_simultaneas);
+	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_local->cant_fallos_job);
+
+	printf("ETAPA DE REDUCCION GLOBAL\n");
+
+	t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
+	int promedio_reduccion_global = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
+	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_global);
+
+	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_global->cant_total_tareas);
+	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_global->cant_fallos_job);
 }

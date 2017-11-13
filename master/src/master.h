@@ -80,5 +80,6 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud);
 t_list * inicializar_estadisticas();
 int calcular_promedio(t_list * lista_tiempo_ejecucion);
 int traducir_respuesta(int respuesta, int etapa);
+void resolver_reduccion_global(t_yama_planificacion_resp *solicitud);
 
 #endif /* MASTER_H_ */

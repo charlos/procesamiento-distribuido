@@ -412,7 +412,6 @@ t_response_task* task_response_recv(int worker_socket, t_log * logger){
 		response->exec_code = DISCONNECTED_CLIENT;
 		return response;
 	}
-	response->oc_code=0;
 	response->oc_code=oc_recv;
 
 	//log_trace(logger, "OC recibida --> %d",response->oc_code);
