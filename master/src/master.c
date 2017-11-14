@@ -46,6 +46,7 @@ int main(int argc, char ** argv) {
 	elapsedTime = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
 
 	imprimir_estadisticas(elapsedTime);
+	log_trace(logger, "Termino Ejecucion");
 	return EXIT_SUCCESS;
 }
 master_cfg * crear_config() {
@@ -73,6 +74,7 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	uint32_t dif_tiempo;
 	gettimeofday(&tiempo_inicio, NULL);
 
+	log_trace(logger, "Job: %d - Se creo hilo para transformacion", job_id);
 	ip_port_combo * combo = split_ipport(respuesta->ip_port);
 
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
@@ -95,6 +97,7 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	liberar_respuesta_transformacion(respuesta);
 	liberar_combo_ip(combo);
 
+	log_trace(logger, "Job: %d - Termina hilo para transformacion", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
 	t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
@@ -106,6 +109,7 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	uint32_t dif_tiempo;
 	gettimeofday(&tiempo_inicio, NULL);
 
+	log_trace(logger, "Job: %d - Se creo hilo para reduccion local", job_id);
 	ip_port_combo * combo = split_ipport(respuesta->ip_puerto);
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
 
@@ -130,6 +134,7 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	unmap_file(script_reduccion->file, script_reduccion->filesize);
 	free(script_reduccion);
 
+	log_trace(logger, "Job: %d - Termino hilo para reduccion local", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
 	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
@@ -225,6 +230,7 @@ void crear_hilo_reduccion_local(t_red_local *reduccion){
 void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 	int i, nodo_enc_socket;
 	t_red_global * nodo_encargado;
+
 	for(i = 0; i < list_size(solicitud->planificados); i++) {
 		nodo_encargado = list_get(solicitud->planificados, i);
 		if(nodo_encargado->designado)break;
@@ -263,7 +269,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 	t_red_global * nodo_encargado;
 	switch(solicitud->etapa){
 	case TRANSFORMACION:
-
+		log_trace(logger, "Job: %d - Iniciando Transformacion", job_id);
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
 
 			t_transformacion * transformacion = (t_transformacion *) list_get(solicitud->planificados, i);
@@ -275,6 +281,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		break;
 
 	case REDUCCION_LOCAL:
+		log_trace(logger, "Job: %d - Iniciando Reduccion Local", job_id);
 		for(i = 0; i < list_size(solicitud->planificados); i++) {
 			t_red_local *reduccion = list_get(solicitud->planificados, i);
 			crear_hilo_reduccion_local(reduccion);
@@ -284,6 +291,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		est_reduccion_local->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_reduccion_local->cant_max_tareas_simultaneas);
 		break;
 	case REDUCCION_GLOBAL:
+		log_trace(logger, "Job: %d - Iniciando Reduccion Global", job_id);
 		resolver_reduccion_global(solicitud);
 		list_iterate(solicitud->planificados, closure_rg);
 		closure_rg(nodo_encargado);
