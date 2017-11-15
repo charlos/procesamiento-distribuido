@@ -360,7 +360,7 @@ t_request_global_reduction *global_reduction_req_recv(int client_socket, t_log *
 	recv_reducciones_globales(client_socket, lista_nodos, logger);
 
 	request->lista_nodos_reduccion_global = lista_nodos;
-	request->exec_code = EXITO;
+	request->exec_code = SUCCESS;
 	return request;
 }
 
@@ -429,8 +429,10 @@ t_response_task* task_response_recv(int worker_socket, t_log * logger){
 	return response;
 }
 
-void mandar_archivo_temporal(int fd, char *nombre_archivo){
-	FILE *f = fopen(nombre_archivo, "r");
+void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
+	char *ruta_archivo = string_from_format("/home/utnso/yama/%s", nombre_archivo);
+	log_trace(logger,"%s RUTA DE ARCHIVO REDUCCION LOCAL", ruta_archivo);
+	FILE *f = fopen(ruta_archivo, "r");
 	fseek(f, 0L, SEEK_END);
 	unsigned long len = ftell(f);
 	fseek(f, 0L, SEEK_SET);
@@ -498,13 +500,14 @@ t_request_local_reducion_filename *local_reduction_file_req_recv(int file_descri
 
 	int received_bytes = socket_recv(&file_descriptor, &filename_size, prot_filename_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ MASTER %d >> disconnected", file_descriptor);
+		if (logger) log_error(logger, "------ WORKER DESIGNADO >> disconnected. Socket: %d", file_descriptor);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
+	request->local_reduction_filename = malloc(filename_size);
 	received_bytes = socket_recv(&file_descriptor, request->local_reduction_filename, filename_size);
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ MASTER %d >> disconnected", file_descriptor);
+		if (logger) log_error(logger, "------ WORKER DESIGNADO >> disconnected. Socket: %d", file_descriptor);
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}

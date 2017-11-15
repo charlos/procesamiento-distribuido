@@ -150,7 +150,7 @@ int processRequest(uint8_t task_code, void* pedido){
 					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 
 					//Probamos con system
-					status = 0 ; //system(instruccion);
+					status = system(instruccion);
 					//status = system("strace /bin/ls > lalalala.txt");
 
 					//Prueba con Fork
@@ -200,7 +200,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				//string_append(&instruccion, "'");
 
 				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
-				status = 0; //system(instruccion);
+				status = system(instruccion);
 
 				if (!status){
 					result = SUCCESS;
@@ -260,7 +260,7 @@ int processRequest(uint8_t task_code, void* pedido){
 			}
 			case REDUCE_GLOBAL_OC_N:{
 				t_argumento_reduccion_global *argumento = pedido;
-				mandar_archivo_temporal(argumento->fd, argumento->resultado_reduccion_local);
+				mandar_archivo_temporal(argumento->fd, argumento->resultado_reduccion_local, logger);
 				break;
 			}
 			default:
@@ -363,8 +363,8 @@ t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
 
 	ip_port_combo* combo= split_ipport(red_global->ip_puerto);
 	apareo->fd = connect_to_socket(combo->ip, combo->port);
-	uint8_t OC = REDUCE_GLOBAL_OC_N;
-	socket_send(&(apareo->fd),&OC,sizeof(uint8_t),0);
+	int resultado_enviado = local_reduction_file_req_send(apareo->fd, red_global->archivo_rl_temp);
+	if(resultado_enviado == -1)log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
 	liberar_combo_ip(combo);
 	return apareo;
 }
@@ -378,7 +378,9 @@ void merge_global(t_list *lista_reduc_global){
 
 	FILE *resultado_apareo_global, *temporal_reduccion_local;
 	resultado_apareo_global = fopen(nodo_designado->archivo_rg, "w+");
-	temporal_reduccion_local = fopen(nodo_designado->archivo_rl_temp, "r");
+	char *ruta_reduccion_local = string_from_format("%s%s", PATH, nodo_designado->archivo_rl_temp);
+	log_trace(logger, "%s RUTA REDUCCION LOCAL", ruta_reduccion_local);
+	temporal_reduccion_local = fopen(ruta_reduccion_local, "r");
 	char *buffer, *linea_archivo_propio = NULL;
 	size_t size = 0;
 	getline(&linea_archivo_propio, &size, temporal_reduccion_local);

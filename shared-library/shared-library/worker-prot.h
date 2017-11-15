@@ -119,7 +119,7 @@ int task_response_send(int,uint8_t, int, t_log *);
  * Recepción de respuesta en Master del resultado de la etapa
  */
 t_response_task*  task_response_recv(int worker_socket, t_log * logger);
-void mandar_archivo_temporal(int fd, char *nombre_archivo);
+void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger);
 int local_reduction_file_req_send(int file_descriptor, char *local_reduction_filename);
 t_request_local_reducion_filename *local_reduction_file_req_recv(int file_descriptor, t_log *logger);
 

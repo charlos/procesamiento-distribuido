@@ -245,12 +245,12 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 
 	// recibir respuesta de worker
 	t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
-	send_recv_status(nodo_enc_socket, response_task->exec_code);
+//	send_recv_status(nodo_enc_socket, response_task->exec_code);
 	// Enviar notificacion a YAMA
 
 	yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
 	free(response_task);
-	free(file->file);
+	unmap_file(file->file, file->filesize);
 	free(file);
 }
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
@@ -294,7 +294,6 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		log_trace(logger, "Job: %d - Iniciando Reduccion Global", job_id);
 		resolver_reduccion_global(solicitud);
 		list_iterate(solicitud->planificados, closure_rg);
-		closure_rg(nodo_encargado);
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
