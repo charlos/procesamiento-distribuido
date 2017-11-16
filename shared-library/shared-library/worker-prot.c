@@ -346,7 +346,7 @@ t_request_global_reduction *global_reduction_req_recv(int client_socket, t_log *
 		request->exec_code = DISCONNECTED_CLIENT;
 		return request;
 	}
-
+	request->script_size = *req_script_size;
 	request->script = malloc(sizeof(char)* (*req_script_size));
 
 	received_bytes = socket_recv(&client_socket, request->script, *req_script_size);

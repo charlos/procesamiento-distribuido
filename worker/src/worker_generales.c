@@ -213,9 +213,34 @@ int processRequest(uint8_t task_code, void* pedido){
 			}
 			case REDUCE_GLOBAL_OC:{
 				t_request_global_reduction * request = (t_request_global_reduction*) pedido;
-				merge_global(request->lista_nodos_reduccion_global);
+				t_red_global *nodo_designado = merge_global(request->lista_nodos_reduccion_global);
 				//TODO armar respuesta
-				result = SUCCESS;
+
+				//Creo el archivo y guardo el script a ejecutar
+				create_script_file(script_filename, request->script_size, request->script );
+
+				 log_trace(logger, "WORKER - merge realizado");
+				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
+				string_append(&instruccion, "cat ");
+				string_append(&instruccion, PATH);
+				string_append(&instruccion, nodo_designado->archivo_rg);
+				string_append(&instruccion, "_tmp | ");
+				string_append(&instruccion, script_filename);
+				string_append(&instruccion, "|sort > ");
+				string_append(&instruccion, PATH);
+				string_append(&instruccion, nodo_designado->archivo_rg);
+				//string_append(&instruccion, "'");
+
+				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
+				status = system(instruccion);
+
+				if (!status){
+					result = SUCCESS;
+				}else {
+					result= ERROR;
+				}
+				log_trace(logger, "WORKER - Reducción global finalizada (Status %d)", result);
+
 				break;
 			}
 			case STORAGE_OC:{
@@ -246,7 +271,6 @@ int processRequest(uint8_t task_code, void* pedido){
 					break;
 				}
 				status = fs_upload_file(socket_filesystem, request->final_file, TEXT, archivo_a_enviar->filesize, archivo_a_enviar->file, logger);
-
 
 				if (status==SUCCESS){
 					result = SUCCESS;
@@ -304,7 +328,16 @@ void free_request(int task_code, void* buffer){
 			free_request_local_reduction(request);
 			break;
 		}
-		case REDUCE_GLOBAL_OC:
+		case REDUCE_GLOBAL_OC:{
+			t_request_global_reduction* request = (t_request_global_reduction*) buffer;
+			free_request_global_reduction(request);
+			break;
+		}
+		case REDUCE_GLOBAL_OC_N:{
+			t_request_local_reducion_filename* request = (t_request_local_reducion_filename*) buffer;
+			free_request_global_reduction_n(request);
+			break;
+		}
 		case STORAGE_OC:
 			break;
 	}
@@ -322,6 +355,24 @@ void free_request_local_reduction(t_request_local_reduction* request){
 	free(request->script);
 	free(request->temp_files);
 	free(request);
+}
+void free_request_global_reduction(t_request_global_reduction* request){
+	free(request->script);
+	list_destroy_and_destroy_elements(request->lista_nodos_reduccion_global, (void*) free_nodo);
+	free(request);
+}
+
+void free_request_global_reduction_n(t_request_local_reducion_filename* request){
+	free(request->local_reduction_filename);
+	free(request);
+}
+
+void free_nodo(t_red_global* nodo){
+	free(nodo->archivo_rg);
+	free(nodo->archivo_rl_temp);
+	free(nodo->ip_puerto);
+	free(nodo->nodo);
+	free(nodo);
 }
 
 void * map_file(char * file_path, int flags) {
@@ -372,12 +423,14 @@ t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
 int es_designado(t_red_global *nodo){
 	return nodo->designado;
 }
-void merge_global(t_list *lista_reduc_global){
+
+t_red_global* merge_global(t_list *lista_reduc_global){
 	t_red_global *nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 	t_list *lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
 
 	FILE *resultado_apareo_global, *temporal_reduccion_local;
-	resultado_apareo_global = fopen(nodo_designado->archivo_rg, "w+");
+	char *ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
+	resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
 	char *ruta_reduccion_local = string_from_format("%s%s", PATH, nodo_designado->archivo_rl_temp);
 	log_trace(logger, "%s RUTA REDUCCION LOCAL", ruta_reduccion_local);
 	temporal_reduccion_local = fopen(ruta_reduccion_local, "r");
@@ -414,9 +467,8 @@ void merge_global(t_list *lista_reduc_global){
 	}
 	char s = '\0';
 	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
-	log_trace(logger, "Antes del fclose");
 	fclose(resultado_apareo_global);
-	log_trace(logger, "Despues del fclose");
+	return nodo_designado;
 }
 
 bool quedan_datos_por_leer(t_list *lista){
@@ -425,3 +477,4 @@ bool quedan_datos_por_leer(t_list *lista){
 	}
 	return list_any_satisfy(lista, linea_no_nula);
 }
+

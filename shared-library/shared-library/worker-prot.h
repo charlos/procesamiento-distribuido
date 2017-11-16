@@ -42,6 +42,7 @@ typedef struct{
 
 typedef struct{
 	void *script;
+	int script_size;
 	t_list *lista_nodos_reduccion_global;
 	uint16_t exec_code;
 } t_request_global_reduction;
