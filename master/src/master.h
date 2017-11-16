@@ -63,7 +63,15 @@ typedef struct {
 	int cant_fallos_job;
 } t_estadisticas;
 
-t_list * lista_estadisticas;
+typedef struct {
+	int tiempo_total;
+	int cant_total_fallos_job;
+	t_estadisticas * metricas_transformacion;
+	t_estadisticas * metricas_reduccion_local;
+	t_estadisticas * metricas_reduccion_global;
+} t_metricas;
+
+t_metricas * metricas;
 
 master_cfg * crear_config();
 
@@ -77,9 +85,10 @@ void crear_hilo_transformador(t_transformacion *transformacion, int job_id);
 void crear_hilo_reduccion_local(t_red_local *reduccion);
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
 void atender_solicitud(t_yama_planificacion_resp *solicitud);
-t_list * inicializar_estadisticas();
+void inicializar_estadisticas();
 int calcular_promedio(t_list * lista_tiempo_ejecucion);
 int traducir_respuesta(int respuesta, int etapa);
 void resolver_reduccion_global(t_yama_planificacion_resp *solicitud);
+void imprimir_estadisticas();
 
 #endif /* MASTER_H_ */

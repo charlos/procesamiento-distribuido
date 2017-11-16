@@ -21,8 +21,7 @@ int main(int argc, char ** argv) {
 	}
 	crear_logger(argv[0], &logger, false, LOG_LEVEL_TRACE);
 	struct timeval tiempo_inicio, tiempo_finalizacion;
-	uint32_t elapsedTime;
-	lista_estadisticas = inicializar_estadisticas();
+	inicializar_estadisticas();
 	gettimeofday(&tiempo_inicio, NULL);
 
 	master_config = crear_config();
@@ -36,17 +35,26 @@ int main(int argc, char ** argv) {
 	t_yama_planificacion_resp * respuesta_solicitud = yama_nueva_solicitud(yama_socket, pedido->ruta_orige, logger);
 	job_id = respuesta_solicitud->job_id;
 	// RECV LOOP
-	while(respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO && respuesta_solicitud->etapa != ALMACENAMIENTO_OK) {
+	while(respuesta_solicitud->exec_code != SERVIDOR_DESCONECTADO && respuesta_solicitud->etapa != FINALIZADO_OK && respuesta_solicitud->etapa != FINALIZADO_ERROR) {
 		atender_solicitud(respuesta_solicitud);
 
 		respuesta_solicitud = yama_resp_planificacion(yama_socket, logger);
 	}
+	if(respuesta_solicitud->exec_code == SERVIDOR_DESCONECTADO) {
+		log_trace(logger, "El servidor se desconector. Abortando ejecucion");
+		printf("El servidor se desconector. Abortando ejecucion");
+		exit(0);
+	} else if(respuesta_solicitud->etapa == FINALIZADO_ERROR) {
+		log_trace(logger, "La ejecucion del job termino con error");
+		printf("La ejecucion del job termino con error");
+		exit(0);
+	} else {
+		gettimeofday(&tiempo_finalizacion, NULL);
+		metricas->tiempo_total = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
+		imprimir_estadisticas();
+		log_trace(logger, "Termino ejecucion satisfactoriamente");
+	}
 
-	gettimeofday(&tiempo_finalizacion, NULL);
-	elapsedTime = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-
-	imprimir_estadisticas(elapsedTime);
-	log_trace(logger, "Termino Ejecucion");
 	return EXIT_SUCCESS;
 }
 master_cfg * crear_config() {
@@ -100,11 +108,10 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	log_trace(logger, "Job: %d - Termina hilo para transformacion", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-	t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
-	list_add(est_transformacion->tiempo_ejecucion_hilos, dif_tiempo);
+	t_estadisticas * est_transformacion = metricas->metricas_transformacion;
+	list_add(est_transformacion->tiempo_ejecucion_hilos, &dif_tiempo);
 }
 void atender_respuesta_reduccion(t_red_local * respuesta) {
-
 	struct timeval tiempo_inicio, tiempo_fin;
 	uint32_t dif_tiempo;
 	gettimeofday(&tiempo_inicio, NULL);
@@ -137,13 +144,50 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	log_trace(logger, "Job: %d - Termino hilo para reduccion local", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
-	list_add(est_reduccion_local->tiempo_ejecucion_hilos, dif_tiempo);
+	t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
+	list_add(est_reduccion_local->tiempo_ejecucion_hilos, &dif_tiempo);
 
 }
+
+void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
+	int i, nodo_enc_socket;
+	t_red_global * nodo_encargado;
+
+	struct timeval tiempo_inicio, tiempo_fin;
+	uint32_t dif_tiempo;
+	gettimeofday(&tiempo_inicio, NULL);
+
+	for(i = 0; i < list_size(solicitud->planificados); i++) {
+		nodo_encargado = list_get(solicitud->planificados, i);
+		if(nodo_encargado->designado)break;
+	}
+	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
+	nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
+	liberar_combo_ip(ip_port);
+	struct_file * file = read_file(pedido->ruta_reduc);
+
+	// Se envia script y lista de nodos a worker designado
+	global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
+
+	// recibir respuesta de worker
+	t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
+
+	int result = traducir_respuesta(response_task->result_code, REDUCCION_GLOBAL);
+	// Enviar notificacion a YAMA
+
+	yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, result, logger);
+	free(response_task);
+	unmap_file(file->file, file->filesize);
+	free(file);
+
+	gettimeofday(&tiempo_fin, NULL);
+	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
+	t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
+	list_add(est_reduccion_global->tiempo_ejecucion_hilos, &dif_tiempo);
+}
+
 struct_file * read_file(char * path) {
 	FILE * file;
-	struct stat st;
 	// este trim nose porque rompe
 //	string_trim(&path);
 	file = fopen(path, "r");
@@ -181,15 +225,13 @@ t_estadisticas * inicializar_struct_estadisticas(int etapa) {
 
 	return nueva_estadistica;
 }
-t_list * inicializar_estadisticas() {
-	t_estadisticas * est_transformacion = inicializar_struct_estadisticas(TRANSFORMACION);
-	t_estadisticas * est_reduccion_local = inicializar_struct_estadisticas(REDUCCION_LOCAL);
-	t_estadisticas * est_reduccion_global = inicializar_struct_estadisticas(REDUCCION_GLOBAL);
-	t_list * lista_estadisticas = list_create();
-	list_add(lista_estadisticas, est_transformacion);
-	list_add(lista_estadisticas, est_reduccion_local);
-	list_add(lista_estadisticas, est_reduccion_global);
-	return lista_estadisticas;
+void inicializar_estadisticas() {
+	metricas = malloc(sizeof(t_metricas));
+	metricas->tiempo_total = 0;
+	metricas->cant_total_fallos_job = 0;
+	metricas->metricas_transformacion = inicializar_struct_estadisticas(TRANSFORMACION);
+	metricas->metricas_reduccion_local = inicializar_struct_estadisticas(REDUCCION_LOCAL);
+	metricas->metricas_reduccion_global = inicializar_struct_estadisticas(REDUCCION_GLOBAL);
 }
 int calcular_promedio(t_list * lista_promedios) {
 	int i, total, cant;
@@ -197,7 +239,7 @@ int calcular_promedio(t_list * lista_promedios) {
 	total = 0;
 
 	for(i = 0; i < cant; i++) {
-		int t = list_get(lista_promedios, i);
+		int t = *(int *)(list_get(lista_promedios, i));
 		total += t;
 	}
 	if(!cant) return 0;
@@ -227,32 +269,6 @@ void crear_hilo_reduccion_local(t_red_local *reduccion){
 
 }
 
-void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
-	int i, nodo_enc_socket;
-	t_red_global * nodo_encargado;
-
-	for(i = 0; i < list_size(solicitud->planificados); i++) {
-		nodo_encargado = list_get(solicitud->planificados, i);
-		if(nodo_encargado->designado)break;
-	}
-	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
-	nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
-	liberar_combo_ip(ip_port);
-	struct_file * file = read_file(pedido->ruta_reduc);
-
-	// Se envia script y lista de nodos a worker designado
-	global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
-
-	// recibir respuesta de worker
-	t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
-//	send_recv_status(nodo_enc_socket, response_task->exec_code);
-	// Enviar notificacion a YAMA
-
-	yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, response_task->result_code, logger);
-	free(response_task);
-	unmap_file(file->file, file->filesize);
-	free(file);
-}
 respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama){
 	respuesta_yama_transform *transformacion_master = malloc(sizeof(respuesta_yama_transform));
 	transformacion_master->archivo_temporal = transformacion_yama->archivo_temporal;
@@ -265,34 +281,35 @@ respuesta_yama_transform *crear_transformacion_master(t_transformacion *transfor
 }
 
 void atender_solicitud(t_yama_planificacion_resp *solicitud){
-	int i, nodo_enc_socket;
+	int i, length, nodo_enc_socket;
 	t_red_global * nodo_encargado;
 	switch(solicitud->etapa){
 	case TRANSFORMACION:
 		log_trace(logger, "Job: %d - Iniciando Transformacion", job_id);
-		for(i = 0; i < list_size(solicitud->planificados); i++) {
+		t_estadisticas * est_transformacion = metricas->metricas_transformacion;
+		est_transformacion->cant_total_tareas += list_size(solicitud->planificados);
+		est_transformacion->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_transformacion->cant_max_tareas_simultaneas);
+		for(i = 0, length = list_size(solicitud->planificados); i < length; i++) {
 
 			t_transformacion * transformacion = (t_transformacion *) list_get(solicitud->planificados, i);
 			crear_hilo_transformador(transformacion, job_id);
 		}
-		t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
-		est_transformacion->cant_total_tareas *= list_size(solicitud->planificados);
-		est_transformacion->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_transformacion->cant_max_tareas_simultaneas);
 		break;
-
 	case REDUCCION_LOCAL:
 		log_trace(logger, "Job: %d - Iniciando Reduccion Local", job_id);
-		for(i = 0; i < list_size(solicitud->planificados); i++) {
+		t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
+		est_reduccion_local->cant_total_tareas += list_size(solicitud->planificados);
+		est_reduccion_local->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_reduccion_local->cant_max_tareas_simultaneas);
+		for(i = 0, length = list_size(solicitud->planificados); i < length; i++) {
 			t_red_local *reduccion = list_get(solicitud->planificados, i);
 			crear_hilo_reduccion_local(reduccion);
 		}
-		t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
-		est_reduccion_local->cant_total_tareas += list_size(solicitud->planificados);
-		est_reduccion_local->cant_max_tareas_simultaneas = max(list_size(solicitud->planificados), est_reduccion_local->cant_max_tareas_simultaneas);
 		break;
 	case REDUCCION_GLOBAL:
 		log_trace(logger, "Job: %d - Iniciando Reduccion Global", job_id);
 		resolver_reduccion_global(solicitud);
+		t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
+		est_reduccion_global->cant_total_tareas += list_size(solicitud->planificados);
 		list_iterate(solicitud->planificados, closure_rg);
 		break;
 	case ALMACENAMIENTO:
@@ -305,8 +322,6 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		// recibir archivo y ruta
 
 		// guardar?
-		t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
-		est_reduccion_global->cant_total_tareas += list_size(solicitud->planificados);
 
 		liberar_combo_ip(ip_port_combo);
 		// TODO Terminar de liberar estructuras
@@ -329,7 +344,7 @@ int traducir_respuesta(int respuesta, int etapa) {
 		case REDUCCION_GLOBAL:
 			return REDUC_GLOBAL_OK;
 		default:
-			break;
+			return 0;
 		}
 	} else {
 		switch (etapa) {
@@ -340,17 +355,24 @@ int traducir_respuesta(int respuesta, int etapa) {
 		case REDUCCION_GLOBAL:
 			return REDUC_GLOBAL_ERROR;
 		default:
-			break;
+			return 0;
 		}
 	}
 }
 
-void imprimir_estadisticas(int elapsedTime){
-	printf("Tiempo de ejecucion total: %d ms  \n", elapsedTime);
+void imprimir_estadisticas(){
+
+	t_estadisticas * est_transformacion = metricas->metricas_transformacion;
+	t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
+	t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
+	metricas->cant_total_fallos_job = est_transformacion->cant_fallos_job + est_reduccion_local->cant_fallos_job + est_reduccion_global->cant_fallos_job;
+
+	printf("Tiempo de ejecucion total: %d ms  \n", metricas->tiempo_total);
+	printf("Cantidad de fallos: %d\n", metricas->cant_total_fallos_job);
 
 	printf("ETAPA DE TRANSFORMACION\n");
 
-	t_estadisticas * est_transformacion = list_get(lista_estadisticas, 0);
+
 	int promedio_transformacion = calcular_promedio(est_transformacion->tiempo_ejecucion_hilos);
 	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
 
@@ -360,7 +382,6 @@ void imprimir_estadisticas(int elapsedTime){
 
 	printf("ETAPA DE REDUCCION LOCAL\n");
 
-	t_estadisticas * est_reduccion_local = list_get(lista_estadisticas, 1);
 	int promedio_reduccion_local = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
 	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
 
@@ -370,7 +391,7 @@ void imprimir_estadisticas(int elapsedTime){
 
 	printf("ETAPA DE REDUCCION GLOBAL\n");
 
-	t_estadisticas * est_reduccion_global = list_get(lista_estadisticas, 2);
+
 	int promedio_reduccion_global = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
 	printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_global);
 
