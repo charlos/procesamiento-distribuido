@@ -112,46 +112,52 @@ int processRequest(uint8_t task_code, void* pedido){
 	int status;
 	int result;
 	char* script_filename = string_new();
-	string_append(&script_filename,PATH);
-	string_append(&script_filename,"script.sh");
-
 	char* instruccion = string_new();
 	switch (task_code) {
 			case TRANSFORM_OC:{
 				t_request_transformation* request = (t_request_transformation*)pedido;
 				if (request->exec_code == SUCCESS){
+					size_t databin_size;
+					int size_random = 5;
+					char *s=malloc(sizeof(char)*size_random+1);
+					string_append(&script_filename,PATH);
+					string_append(&script_filename,"script_transf_");
+					gen_random(s, size_random);
+					string_append(&script_filename,s);
+					//string_append(&script_filename,".pl");
+					free(s);
 					//Creo el archivo y guardo el script a ejecutar
-					create_script_file(script_filename, request->script_size, request->script );
-
+					create_script_file(script_filename, request->script_size, request->script);
 					buffer_size = request->used_size;
 					//Leer el archivo data.bin y obtener el bloque pedido
 					buffer = malloc(buffer_size);
 					//mapeo el archivo data.bin
-					data_bin_mf_ptr = map_file(worker_conf->databin_path, O_RDWR); //O_RDONLY
+					data_bin_mf_ptr = map_file(worker_conf->databin_path,&databin_size, O_RDWR);
 					memcpy(buffer, data_bin_mf_ptr + (BLOCK_SIZE * (request->block)), buffer_size);
+					//libero el archivo mapeado
+					munmap(data_bin_mf_ptr,  databin_size);
 					char* filename = string_new();
 					string_append(&filename,PATH);
-					//TODO generar nombre para cada bloque
 					string_append(&filename, "Block_");
-					//string_append(&filename, temporal_get_string_time());
-					//string_append(&filename, request->block);
+					char* bloque = string_itoa(request->block);
+					string_append(&filename, bloque);
+					free(bloque);
 					create_block_file(filename, buffer_size, buffer);
 
 					//compongo instrucción a ejecutar: cat del archivo + script de transformacion + ordenar + guardar en archivo temp
-					string_append(&instruccion, " cat ");
+					string_append(&instruccion, "export PATH=$PATH:$(pwd) | cat ");
 					string_append(&instruccion, filename);
-					string_append(&instruccion, " | sh ");
+					string_append(&instruccion, " | ");
 					string_append(&instruccion, script_filename);
 					string_append(&instruccion, " | sort > ");
 					string_append(&instruccion, PATH);
 					string_append(&instruccion, request->result_file);
 					//string_append(&instruccion, "'");
-
+					free(filename);
 					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 
 					//Probamos con system
 					status = system(instruccion);
-					//status = system("strace /bin/ls > lalalala.txt");
 
 					//Prueba con Fork
 					//status = run_instruction(instruccion);
@@ -165,20 +171,37 @@ int processRequest(uint8_t task_code, void* pedido){
 
 					log_trace(logger, "WORKER - Transformación finalizada (Resultado %d)", result);
 
+					//elimino archivos temporales creados
+//					   if(remove(filename) != 0) {
+//						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", filename);
+//					   }
+//					   if(remove(script_filename) != 0) {
+//						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+//					   }
+//					   free(script_filename);
+//					   free(filename);
+//					   free(instruccion);
 				}
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
 				 log_trace(logger, "WORKER - Dentro de reduccion local");
 				t_request_local_reduction* request = (t_request_local_reduction*) pedido;
-
+				int size_random = 5;
+				char *s=malloc(sizeof(char)*size_random+1);
+				string_append(&script_filename,PATH);
+				string_append(&script_filename,"script_reducloc_");
+				gen_random(s, size_random);
+				string_append(&script_filename,s);
+				//string_append(&script_filename,".pl");
+				free(s);
 				//Creo el archivo y guardo el script a ejecutar
 				create_script_file(script_filename, request->script_size, request->script );
 
 				//Pruebo hacer el merge directamente con sort en la misma instruccion
 				char** temp_files = string_split(request->temp_files, ";");
 				//merge_temp_files(temp_files, request->result_file);
-				string_append(&instruccion, " sort ");
+				string_append(&instruccion, "export PATH=$PATH:$(pwd) | sort ");
 				int i = 0;
 				while(temp_files[i]!=NULL){
 					string_append(&instruccion,PATH);
@@ -189,15 +212,11 @@ int processRequest(uint8_t task_code, void* pedido){
 
 				 log_trace(logger, "WORKER - merge realizado");
 				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
-				//string_append(&instruccion, "cat ");
-				//string_append(&instruccion, PATH);
-				//string_append(&instruccion, request->result_file);
 				string_append(&instruccion, "| ");
 				string_append(&instruccion, script_filename);
 				string_append(&instruccion, "|sort > ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, request->result_file);
-				//string_append(&instruccion, "'");
 
 				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 				status = system(instruccion);
@@ -209,6 +228,13 @@ int processRequest(uint8_t task_code, void* pedido){
 				}
 				log_trace(logger, "WORKER - Reducción local finalizada (Status %d)", result);
 
+				//elimino archivos temporales creados
+/*				   if(remove(script_filename) != 0) {
+					   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+				   }
+				   free(script_filename);
+				   free(instruccion);*/
+
 				break;
 			}
 			case REDUCE_GLOBAL_OC:{
@@ -216,11 +242,20 @@ int processRequest(uint8_t task_code, void* pedido){
 				t_red_global *nodo_designado = merge_global(request->lista_nodos_reduccion_global);
 				//TODO armar respuesta
 
+				int size_random = 5;
+				char *s=malloc(sizeof(char)*size_random+1);
+				string_append(&script_filename,PATH);
+				string_append(&script_filename,"script_reducglobal_");
+				gen_random(s, size_random);
+				string_append(&script_filename,s);
+				//string_append(&script_filename,".pl");
+				free(s);
 				//Creo el archivo y guardo el script a ejecutar
 				create_script_file(script_filename, request->script_size, request->script );
 
 				 log_trace(logger, "WORKER - merge realizado");
 				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
+				string_append(&instruccion, "export PATH=$PATH:$(pwd) | ");
 				string_append(&instruccion, "cat ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, nodo_designado->archivo_rg);
@@ -240,6 +275,13 @@ int processRequest(uint8_t task_code, void* pedido){
 					result= ERROR;
 				}
 				log_trace(logger, "WORKER - Reducción global finalizada (Status %d)", result);
+
+				//elimino archivos temporales creados
+				  // if(remove(script_filename) != 0) {
+					//   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+				  // }
+				   //free(script_filename);
+				   //free(instruccion);
 
 				break;
 			}
@@ -309,7 +351,7 @@ struct_file * read_file(char * path) {
 		struct_file * file_struct = malloc(sizeof(struct_file));
 		file_struct->filesize = size;
 
-		file_struct->file = map_file(path, O_RDWR);
+		file_struct->file = map_file(path,&(file_struct->filesize), O_RDWR);
 		fclose(file);
 		return file_struct;
 	}
@@ -375,20 +417,19 @@ void free_nodo(t_red_global* nodo){
 	free(nodo);
 }
 
-void * map_file(char * file_path, int flags) {
+void * map_file(char * file_path, size_t* size, int flags) {
 	struct stat sb;
-	size_t size;
+	//size_t size2;
 	int fd; // file descriptor
 	int status;
 
 	fd = open(file_path, flags);
-	//check(fd < 0, "open %s failed: %s", file_path, strerror(errno));
 
 	status = fstat(fd, &sb);
-	//check(status < 0, "stat %s failed: %s", file_path, strerror(errno));
-	size = sb.st_size;
+	*size = sb.st_size;
+	//size2 = sb.st_size;
 
-	void * mapped_file_ptr = mmap((caddr_t) 0, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	void * mapped_file_ptr = mmap((caddr_t) 0, *size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	//check((mapped_file_ptr == MAP_FAILED), "mmap %s failed: %s", file_path, strerror(errno));
 
 	return mapped_file_ptr;
@@ -478,3 +519,13 @@ bool quedan_datos_por_leer(t_list *lista){
 	return list_any_satisfy(lista, linea_no_nula);
 }
 
+void gen_random(char *s, const int len) {
+    static const char alphanum[] =
+        "0123456789"
+        "abcdefghijklmnopqrstuvwxyz";
+    int i;
+    for (i = 0; i < len; ++i) {
+        s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+    }
+    s[len] = 0;
+}

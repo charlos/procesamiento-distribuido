@@ -56,7 +56,7 @@ typedef struct {
 	char *resultado_reduccion_local;
 } t_argumento_reduccion_global;
 
-void * map_file(char * file_path, int flags);
+void * map_file(char * file_path,size_t*, int flags);
 void load_properties(char*);
 void create_script_file(char *script_filename, int script_size, void* script );
 void create_block_file(char *filename, int size, void* block );
@@ -74,5 +74,6 @@ t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
 t_red_global* merge_global(t_list *lista_reduc_global);
 bool quedan_datos_por_leer(t_list *lista);
 void free_nodo(t_red_global* nodo);
+void gen_random(char *s, const int len);
 
 #endif /* WORKER_H_ */
