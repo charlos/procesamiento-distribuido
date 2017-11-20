@@ -48,11 +48,13 @@ int main(int argc, char ** argv) {
 		log_trace(logger, "La ejecucion del job termino con error");
 		printf("La ejecucion del job termino con error");
 		exit(0);
-	} else {
+	} else if(respuesta_solicitud->etapa == FINALIZADO_OK){
 		gettimeofday(&tiempo_finalizacion, NULL);
 		metricas->tiempo_total = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
 		imprimir_estadisticas();
 		log_trace(logger, "Termino ejecucion satisfactoriamente");
+	} else {
+		printf("Error no contemplado");
 	}
 
 	return EXIT_SUCCESS;
@@ -239,7 +241,9 @@ int calcular_promedio(t_list * lista_promedios) {
 	total = 0;
 
 	for(i = 0; i < cant; i++) {
-		int t = *(int *)(list_get(lista_promedios, i));
+		uint32_t * ptr_num = (uint32_t *) list_get(lista_promedios, i);
+		uint32_t t = *ptr_num;
+		//uint32_t t = *(uint32_t *)(list_get(lista_promedios, i));
 		total += t;
 	}
 	if(!cant) return 0;
@@ -323,8 +327,9 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		final_storage_req_send(nodo_enc_socket, almacenamiento->archivo_rg, pedido->ruta_resul, logger);
 		// recibir archivo y ruta
 		t_response_task * response = task_response_recv(nodo_enc_socket, logger);
+		int result = traducir_respuesta(response->result_code, ALMACENAMIENTO);
 		// guardar?
-		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, response->result_code, logger);
+		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
 		liberar_combo_ip(ip_port_combo);
 		// TODO Terminar de liberar estructuras
 		break;
@@ -345,6 +350,8 @@ int traducir_respuesta(int respuesta, int etapa) {
 			return REDUC_LOCAL_OK;
 		case REDUCCION_GLOBAL:
 			return REDUC_GLOBAL_OK;
+		case ALMACENAMIENTO:
+			return ALMACENAMIENTO_OK;
 		default:
 			return 0;
 		}
@@ -356,6 +363,8 @@ int traducir_respuesta(int respuesta, int etapa) {
 			return REDUC_LOCAL_ERROR;
 		case REDUCCION_GLOBAL:
 			return REDUC_GLOBAL_ERROR;
+		case ALMACENAMIENTO:
+			return ALMACENAMIENTO_ERROR;
 		default:
 			return 0;
 		}
