@@ -320,7 +320,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		ip_port_combo * ip_port_combo = split_ipport(almacenamiento->ip_puerto);
 		nodo_enc_socket = connect_to_socket(ip_port_combo->ip, ip_port_combo->port);
 		// enviar solicitus a worker
-		enviar_solicitud_almacenamiento_a_worker(nodo_enc_socket, almacenamiento->archivo_rg);
+		final_storage_req_send(nodo_enc_socket, almacenamiento->archivo_rg, pedido->ruta_resul, logger);
 		// recibir archivo y ruta
 		t_response_task * response = task_response_recv(nodo_enc_socket, logger);
 		// guardar?

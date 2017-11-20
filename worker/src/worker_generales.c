@@ -259,7 +259,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&instruccion, "cat ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, nodo_designado->archivo_rg);
-				string_append(&instruccion, "_tmp | ");
+				string_append(&instruccion, "_temp | ");
 				string_append(&instruccion, script_filename);
 				string_append(&instruccion, "|sort > ");
 				string_append(&instruccion, PATH);
