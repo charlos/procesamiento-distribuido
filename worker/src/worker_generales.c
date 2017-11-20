@@ -283,8 +283,9 @@ int processRequest(uint8_t task_code, void* pedido){
 				break;
 			}
 			case REDUCE_GLOBAL_OC_N:{
-				t_argumento_reduccion_global *argumento = pedido;
-				mandar_archivo_temporal(argumento->fd, argumento->resultado_reduccion_local, logger);
+				t_request_local_reducion_filename* argumento = pedido;
+				log_trace(logger, "Por mandar archivo a worker designado");
+				mandar_archivo_temporal(argumento->fd, argumento->local_reduction_filename, logger);
 				break;
 			}
 			default:
@@ -403,6 +404,7 @@ void leer_linea(t_estructura_loca_apareo *est_apareo){
 			est_apareo->linea = malloc(est_apareo->longitud_linea + 1);
 			socket_recv(&(est_apareo->fd), est_apareo->linea, est_apareo->longitud_linea);
 			est_apareo->linea[est_apareo->longitud_linea] = '\0';
+			log_trace(logger, "auxiliar fd: %d. Linea recibida: %s", est_apareo->fd, est_apareo->linea);
 		}
 	} else {
 
@@ -427,7 +429,7 @@ int es_designado(t_red_global *nodo){
 t_red_global* merge_global(t_list *lista_reduc_global){
 	t_red_global *nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 	t_list *lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
-
+	log_trace(logger, "cantidad de auxiliares: %d", list_size(lista));
 	FILE *resultado_apareo_global, *temporal_reduccion_local;
 	char *ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
 	resultado_apareo_global = fopen(ruta_reduccion_global, "w+");

@@ -168,7 +168,7 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 
 	// Se envia script y lista de nodos a worker designado
 	global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
-
+	log_trace(logger, "Se envio a worker el paquete");
 	// recibir respuesta de worker
 	t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
 
@@ -314,7 +314,9 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
+		log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
 		nodo_encargado = list_get(solicitud->planificados, 0);
+		log_trace(logger, "Almacenamient: nombre de archivo final %s", nodo_encargado->archivo_rg);
 		ip_port_combo * ip_port_combo = split_ipport(nodo_encargado->ip_puerto);
 		nodo_enc_socket = connect_to_socket(ip_port_combo->ip, ip_port_combo->port);
 		// enviar solicitus a worker
