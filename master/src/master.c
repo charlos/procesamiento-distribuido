@@ -315,16 +315,16 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
 		log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
-		nodo_encargado = list_get(solicitud->planificados, 0);
-		log_trace(logger, "Almacenamient: nombre de archivo final %s", nodo_encargado->archivo_rg);
-		ip_port_combo * ip_port_combo = split_ipport(nodo_encargado->ip_puerto);
+		t_almacenamiento *almacenamiento = list_get(solicitud->planificados, 0);
+		log_trace(logger, "Almacenamient: nombre de archivo final %s", almacenamiento->archivo_rg);
+		ip_port_combo * ip_port_combo = split_ipport(almacenamiento->ip_puerto);
 		nodo_enc_socket = connect_to_socket(ip_port_combo->ip, ip_port_combo->port);
 		// enviar solicitus a worker
-		enviar_solicitud_almacenamiento_a_worker(nodo_enc_socket, nodo_encargado->archivo_rg);
+		enviar_solicitud_almacenamiento_a_worker(nodo_enc_socket, almacenamiento->archivo_rg);
 		// recibir archivo y ruta
-
+		t_response_task * response = task_response_recv(nodo_enc_socket, logger);
 		// guardar?
-
+		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, response->result_code, logger);
 		liberar_combo_ip(ip_port_combo);
 		// TODO Terminar de liberar estructuras
 		break;
