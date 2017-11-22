@@ -37,8 +37,12 @@ int transform_req_send(int worker_socket, int block, int used_size, char* result
 	memcpy(request + prot_ope_code + prot_block + prot_used_size + prot_result_file, result_file, req_result_file);
 	memcpy(request + prot_ope_code + prot_block + prot_used_size + prot_result_file + req_result_file, &req_script_size, prot_script_size);
 	memcpy(request + prot_ope_code + prot_block + prot_used_size + prot_result_file + req_result_file + prot_script_size, script, req_script_size);
-	socket_send(&worker_socket, request, msg_size, 0);
+	int status = socket_send(&worker_socket, request, msg_size, 0);
 	free(request);
+
+	if(status <= 0) {
+		return -1;
+	}
 
 	uint8_t resp_prot_code = sizeof(int16_t);
 	uint16_t code;
