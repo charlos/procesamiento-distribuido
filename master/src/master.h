@@ -57,6 +57,7 @@ typedef struct {
 typedef struct {
 	int etapa;
 	int tiempo_promedio_ejecucion;
+	uint32_t reg_promedio;
 	t_list * tiempo_ejecucion_hilos;
 	int cant_max_tareas_simultaneas;
 	int cant_total_tareas;
