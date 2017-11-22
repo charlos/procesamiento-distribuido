@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/timeb.h>
 #include <sys/wait.h>
 #include <commons/log.h>
 #include <commons/string.h>
@@ -75,5 +76,7 @@ t_red_global* merge_global(t_list *lista_reduc_global);
 bool quedan_datos_por_leer(t_list *lista);
 void free_nodo(t_red_global* nodo);
 void gen_random(char *s, const int len);
+void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger);
+char *temporal_get_string_time_bis();
 
 #endif /* WORKER_H_ */

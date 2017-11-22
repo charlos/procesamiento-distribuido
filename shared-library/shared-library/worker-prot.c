@@ -433,37 +433,6 @@ t_response_task* task_response_recv(int worker_socket, t_log * logger){
 	return response;
 }
 
-void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
-	log_trace(logger, "Mandando archivo temporal: \n file_descriptor: %d\n nombre_temporal_local: %s", fd, nombre_archivo);
-	char *ruta_archivo = string_from_format("/home/utnso/yama/%s", nombre_archivo);
-	log_trace(logger,"%s RUTA DE ARCHIVO REDUCCION LOCAL", ruta_archivo);
-	FILE *f = fopen(ruta_archivo, "r");
-	fseek(f, 0L, SEEK_END);
-	unsigned long len = ftell(f);
-	fseek(f, 0L, SEEK_SET);
-	char *linea = NULL, *buffer;
-	size_t size = 0;
-	buffer = malloc(len);
-	int offset = 0;
-	while((getline(&linea, &size, f) != -1)){
-		int len_linea = strlen(linea);
-		buffer = realloc(buffer, len + sizeof(int));
-		len += sizeof(int);
-		memcpy(buffer + offset, &len_linea, sizeof(int));
-		offset += sizeof(int);
-		memcpy(buffer + offset, linea, len_linea);
-		offset += len_linea;
-	}
-	char fin = '\0';
-	int aa = 0;
-//	memcpy(buffer + offset, &fin, sizeof(char));
-//	offset += sizeof(int);
-
-	buffer = realloc(buffer, len + sizeof(int));
-
-	memcpy(buffer + offset, &aa, sizeof(int));
-	int enviado = socket_send(&fd, buffer, len + sizeof(int), 0);
-}
 
 void send_recv_status(int master_socket, int16_t status) {
 	//printf("Dentro de send_recv_status\n");

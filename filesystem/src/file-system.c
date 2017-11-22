@@ -91,9 +91,10 @@ int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
 char * pre_assign_node(char *);
 char * get_datanode_ip_port(char * node_name);
 char * assign_node(char *);
+bool is_dir(char *, int, t_fs_directory *);
 bool is_number(char *);
 bool is_disconnected(t_fs_node *);
-bool in_ignore_list(int, t_list *);
+bool in_locked_index_list(int, t_list *);
 bool dir_exists(int, int, char *);
 
 int main(int argc, char * argv[]) {
@@ -880,10 +881,10 @@ int uploading_file(t_fs_upload_file_req * req) {
 /**
  * @NAME get_dir_index
  */
-int get_dir_index(char * path, int lock_type, t_list * ignore_list) {
+int get_dir_index(char * path, int lock_type, t_list * locked_index_list) {
 	if (strcmp(path, "/") == 0) {
-		if (ignore_list && in_ignore_list(ROOT, ignore_list)) {
-			return ENOTDIR;
+		if (locked_index_list && in_locked_index_list(ROOT, locked_index_list)) {
+			return ROOT;
 		}
 		rw_lock_unlock(directories_locks, lock_type, ROOT);
 		return ROOT;
@@ -893,7 +894,7 @@ int get_dir_index(char * path, int lock_type, t_list * ignore_list) {
 	char * path_c = string_duplicate(path);
 	char * dir = strtok(path_c, "/");
 	while (dir != NULL) {
-		dir_index = get_dir_index_from_table(dir, pd_index, lock_type, ignore_list);
+		dir_index = get_dir_index_from_table(dir, pd_index, lock_type, locked_index_list);
 		if (pd_index != ROOT)
 			rw_lock_unlock(directories_locks, UNLOCK, pd_index);
 		if (dir_index == ENOTDIR)
@@ -908,19 +909,31 @@ int get_dir_index(char * path, int lock_type, t_list * ignore_list) {
 /**
  * @NAME get_dir_index_from_table
  */
-int get_dir_index_from_table(char * dir, int parent_index, int lock_type, t_list * ignore_list) {
+int get_dir_index_from_table(char * dir, int parent_index, int lock_type, t_list * locked_index_list) {
 	t_fs_directory * fs_dir = (t_fs_directory *) directories_mf_ptr;
 	int index = 0;
 	while (index < DIRECTORIES_AMOUNT) {
-		if (index == parent_index || (ignore_list && in_ignore_list(index, ignore_list))){
+
+		if (index == parent_index) {
 			index++;
 			fs_dir++;
 			continue;
 		}
+
+		if (locked_index_list && in_locked_index_list(index, locked_index_list)) {
+			if (is_dir(dir, parent_index, fs_dir)) {
+				return index;
+			}
+			index++;
+			fs_dir++;
+			continue;
+		}
+
 		rw_lock_unlock(directories_locks, lock_type, index);
-		if (((fs_dir->parent_dir) >= 0) && (((fs_dir->parent_dir) == parent_index) && (strcmp((char *)(fs_dir->name), dir) == 0)))
+		if (is_dir(dir, parent_index, fs_dir))
 			return index;
 		rw_lock_unlock(directories_locks, UNLOCK, index);
+
 		index++;
 		fs_dir++;
 	}
@@ -928,12 +941,19 @@ int get_dir_index_from_table(char * dir, int parent_index, int lock_type, t_list
 }
 
 /**
- * @NAME in_ignore_list
+ * @NAME is_dir
  */
-bool in_ignore_list(int index, t_list * ignore_list) {
+bool is_dir(char * dir, int parent_index, t_fs_directory * fs_dir) {
+	return ((fs_dir->parent_dir) >= 0) && (((fs_dir->parent_dir) == parent_index) && (strcmp((char *)(fs_dir->name), dir) == 0));
+}
+
+/**
+ * @NAME in_locked_index_list
+ */
+bool in_locked_index_list(int index, t_list * locked_index_list) {
 	int i = 0;
-	while (i < (ignore_list->elements_count)) {
-		if (((int) list_get(ignore_list, i)) == index) {
+	while (i < (locked_index_list->elements_count)) {
+		if (((int) list_get(locked_index_list, i)) == index) {
 			return true;
 		}
 		i++;
@@ -1631,6 +1651,7 @@ int make_dir(int parent_dir, char * dir) {
  * @NAME move
  */
 void move(char * path, char * dest_dir_path) {
+
 	if (strcmp(path, "/") == 0) {
 		printf("error: root directory cannot be moved.\nplease try again...\n");
 		return;
@@ -1644,10 +1665,10 @@ void move(char * path, char * dest_dir_path) {
 		printf("error: destination directory doesn't exist.\nplease try again...\n");
 		return;
 	}
-	t_list * ignore_list = list_create();
-	list_add(ignore_list, dest_dir_index);
+	t_list * locked_index_list = list_create();
+	list_add(locked_index_list, dest_dir_index);
 
-	int dir_index = get_dir_index(path, LOCK_WRITE, ignore_list);
+	int dir_index = get_dir_index(path, LOCK_WRITE, locked_index_list);
 	if (dir_index == ENOTDIR) {
 		// is a file
 		char * dir_c = string_duplicate(path);
@@ -1655,10 +1676,10 @@ void move(char * path, char * dest_dir_path) {
 		char * yamafs_dir = dirname(dir_c);
 		char * yamafs_file = basename(base_c);
 
-		dir_index = get_dir_index(yamafs_dir, LOCK_WRITE, ignore_list);
+		dir_index = get_dir_index(yamafs_dir, LOCK_WRITE, locked_index_list);
 		if (dir_index == ENOTDIR) {
 			rw_lock_unlock(directories_locks, UNLOCK, dest_dir_index);
-			list_destroy(ignore_list);
+			list_destroy(locked_index_list);
 			free(base_c);
 			free(dir_c);
 			printf("error: file doesn't exist.\nplease try again...\n");
@@ -1670,7 +1691,7 @@ void move(char * path, char * dest_dir_path) {
 		if ((stat(old_md_file_path, &sb) < 0) || (stat(old_md_file_path, &sb) == 0 && !(S_ISREG(sb.st_mode)))) {
 			rw_lock_unlock(directories_locks, UNLOCK, dest_dir_index);
 			rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-			list_destroy(ignore_list);
+			list_destroy(locked_index_list);
 			free(old_md_file_path);
 			free(base_c);
 			free(dir_c);
@@ -1682,7 +1703,7 @@ void move(char * path, char * dest_dir_path) {
 		if ((stat(new_md_file_path, &sb) == 0) && (S_ISREG(sb.st_mode))) {
 			rw_lock_unlock(directories_locks, UNLOCK, dest_dir_index);
 			rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-			list_destroy(ignore_list);
+			list_destroy(locked_index_list);
 			free(new_md_file_path);
 			free(old_md_file_path);
 			free(base_c);
@@ -1699,7 +1720,7 @@ void move(char * path, char * dest_dir_path) {
 
 		rw_lock_unlock(directories_locks, UNLOCK, dest_dir_index);
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
-		list_destroy(ignore_list);
+		list_destroy(locked_index_list);
 		free(new_md_file_path);
 		free(old_md_file_path);
 		free(base_c);
@@ -1717,7 +1738,7 @@ void move(char * path, char * dest_dir_path) {
 		}
 		rw_lock_unlock(directories_locks, UNLOCK, dir_index);
 		rw_lock_unlock(directories_locks, UNLOCK, dest_dir_index);
-		list_destroy(ignore_list);
+		list_destroy(locked_index_list);
 	}
 }
 
@@ -1806,6 +1827,7 @@ void format() {
 		index++;
 	}
 	string_append(&node_list_str, "]");
+	fprintf(temp,"NODOS=%s\n", node_list_str);
 	free(node_list_str);
 
 	char * key;
@@ -2808,10 +2830,15 @@ int execute_line(char * line) {
 
 	char * line_aux = string_duplicate(line);
 	int i = 0;
-	while (line_aux[i] != ' ') i++;
-	char * word = malloc(sizeof(char) * i);
-	strncpy(word, line_aux, i);
-	word[i] = '\0';
+	char * word;
+	if(string_contains(line, " ")){
+		while (line_aux[i] != ' ') i++;
+		word = malloc(sizeof(char) * i);
+		strncpy(word, line_aux, i);
+		word[i] = '\0';
+	} else word = string_duplicate(line_aux);
+
+
 	t_command * command = find_command (word);
 
 	i++;
