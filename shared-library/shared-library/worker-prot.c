@@ -430,7 +430,6 @@ t_response_task* task_response_recv(int worker_socket, t_log * logger){
 }
 
 
-
 void send_recv_status(int master_socket, int16_t status) {
 	//printf("Dentro de send_recv_status\n");
 	uint8_t response_size = sizeof(int16_t);

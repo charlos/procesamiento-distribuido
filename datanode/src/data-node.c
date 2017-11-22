@@ -55,7 +55,7 @@ void load_dn_properties(char * cfg_path) {
 	t_config * conf = config_create(cfg_path);
 	dn_conf = malloc(sizeof(t_dn_conf));
 	dn_conf->node_name = string_duplicate(config_get_string_value(conf, "NOMBRE_NODO"));
-	dn_conf->worker_ip = string_duplicate(config_get_string_value(conf, "IP_WORKER"));
+	dn_conf->worker_ip = string_duplicate(config_get_string_value(conf, "IP_NODO"));
 	dn_conf->worker_port = string_duplicate(config_get_string_value(conf, "PUERTO_WORKER"));
 	dn_conf->fs_ip = string_duplicate(config_get_string_value(conf, "IP_FILESYSTEM"));
 	dn_conf->fs_port = string_duplicate(config_get_string_value(conf, "PUERTO_FILESYSTEM"));
