@@ -2808,10 +2808,15 @@ int execute_line(char * line) {
 
 	char * line_aux = string_duplicate(line);
 	int i = 0;
-	while (line_aux[i] != ' ') i++;
-	char * word = malloc(sizeof(char) * i);
-	strncpy(word, line_aux, i);
-	word[i] = '\0';
+	char * word;
+	if(string_contains(line, " ")){
+		while (line_aux[i] != ' ') i++;
+		word = malloc(sizeof(char) * i);
+		strncpy(word, line_aux, i);
+		word[i] = '\0';
+	} else word = string_duplicate(line_aux);
+
+
 	t_command * command = find_command (word);
 
 	i++;
