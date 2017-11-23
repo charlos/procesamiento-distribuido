@@ -57,17 +57,17 @@ int connect_to_socket(char * server_ip, char * server_port) {
 
 	if (getaddrinfo(server_ip, server_port, &hints, &server_info) != 0) {
 		fprintf(stderr, "socket - error en getaddrinfo()\n");
-		exit(1);
+		//exit(1);
 	}
 	int server_socket = socket(server_info->ai_family, server_info->ai_socktype, server_info->ai_protocol);
 	if (server_socket == -1) {
 		fprintf(stderr, "socket - error en socket()\n");
-		exit(1);
+		//exit(1);
 	}
 	if (connect(server_socket, server_info->ai_addr, server_info->ai_addrlen) == -1) {
 		close(server_socket);
 		fprintf(stderr, "socket - error en connect()\n");
-		exit(1);
+		//exit(1);
 	}
 	freeaddrinfo(server_info);
 	return server_socket;

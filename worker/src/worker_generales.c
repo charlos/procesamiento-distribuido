@@ -118,14 +118,12 @@ int processRequest(uint8_t task_code, void* pedido){
 				t_request_transformation* request = (t_request_transformation*)pedido;
 				if (request->exec_code == SUCCESS){
 					size_t databin_size;
-					int size_random = 5;
-					char *s=malloc(sizeof(char)*size_random+1);
 					string_append(&script_filename,PATH);
 					string_append(&script_filename,"script_transf_");
-					gen_random(s, size_random);
-					string_append(&script_filename,s);
+					char *tiempo = temporal_get_string_time_bis();
+					string_append(&script_filename,tiempo);
 					//string_append(&script_filename,".pl");
-					free(s);
+					free(tiempo);
 					//Creo el archivo y guardo el script a ejecutar
 					create_script_file(script_filename, request->script_size, request->script);
 					buffer_size = request->used_size;
@@ -138,7 +136,8 @@ int processRequest(uint8_t task_code, void* pedido){
 					munmap(data_bin_mf_ptr,  databin_size);
 					char* filename = string_new();
 					string_append(&filename,PATH);
-					string_append(&filename, "Block_");
+					string_append(&filename,worker_conf->nodo_name);
+					string_append(&filename, "_Block_");
 					char* bloque = string_itoa(request->block);
 					string_append(&filename, bloque);
 					free(bloque);
@@ -153,7 +152,6 @@ int processRequest(uint8_t task_code, void* pedido){
 					string_append(&instruccion, PATH);
 					string_append(&instruccion, request->result_file);
 					//string_append(&instruccion, "'");
-					free(filename);
 					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 
 					//Probamos con system
@@ -172,29 +170,27 @@ int processRequest(uint8_t task_code, void* pedido){
 					log_trace(logger, "WORKER - Transformación finalizada (Resultado %d)", result);
 
 					//elimino archivos temporales creados
-//					   if(remove(filename) != 0) {
-//						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", filename);
-//					   }
-//					   if(remove(script_filename) != 0) {
-//						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
-//					   }
-//					   free(script_filename);
-//					   free(filename);
-//					   free(instruccion);
+					   if(remove(filename) != 0) {
+						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", filename);
+					   }
+					   if(remove(script_filename) != 0) {
+						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+					   }
+					   free(script_filename);
+					   free(filename);
+					   free(instruccion);
 				}
 				break;
 			}
 			case REDUCE_LOCALLY_OC:{
 				 log_trace(logger, "WORKER - Dentro de reduccion local");
 				t_request_local_reduction* request = (t_request_local_reduction*) pedido;
-				int size_random = 5;
-				char *s=malloc(sizeof(char)*size_random+1);
+				char *tiempo = temporal_get_string_time_bis();
 				string_append(&script_filename,PATH);
 				string_append(&script_filename,"script_reducloc_");
-				gen_random(s, size_random);
-				string_append(&script_filename,s);
+				string_append(&script_filename,tiempo);
 				//string_append(&script_filename,".pl");
-				free(s);
+				free(tiempo);
 				//Creo el archivo y guardo el script a ejecutar
 				create_script_file(script_filename, request->script_size, request->script );
 
@@ -229,11 +225,11 @@ int processRequest(uint8_t task_code, void* pedido){
 				log_trace(logger, "WORKER - Reducción local finalizada (Status %d)", result);
 
 				//elimino archivos temporales creados
-/*				   if(remove(script_filename) != 0) {
+				   if(remove(script_filename) != 0) {
 					   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
 				   }
 				   free(script_filename);
-				   free(instruccion);*/
+				   free(instruccion);
 
 				break;
 			}
@@ -242,14 +238,12 @@ int processRequest(uint8_t task_code, void* pedido){
 				t_red_global *nodo_designado = merge_global(request->lista_nodos_reduccion_global);
 				//TODO armar respuesta
 
-				int size_random = 5;
-				char *s=malloc(sizeof(char)*size_random+1);
+				char *tiempo = temporal_get_string_time_bis();
 				string_append(&script_filename,PATH);
 				string_append(&script_filename,"script_reducglobal_");
-				gen_random(s, size_random);
-				string_append(&script_filename,s);
+				string_append(&script_filename,tiempo);
 				//string_append(&script_filename,".pl");
-				free(s);
+				free(tiempo);
 				//Creo el archivo y guardo el script a ejecutar
 				create_script_file(script_filename, request->script_size, request->script );
 
@@ -261,7 +255,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&instruccion, nodo_designado->archivo_rg);
 				string_append(&instruccion, "_temp | ");
 				string_append(&instruccion, script_filename);
-				string_append(&instruccion, "|sort > ");
+				string_append(&instruccion, " > "); //|sort
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, nodo_designado->archivo_rg);
 				//string_append(&instruccion, "'");
@@ -277,11 +271,11 @@ int processRequest(uint8_t task_code, void* pedido){
 				log_trace(logger, "WORKER - Reducción global finalizada (Status %d)", result);
 
 				//elimino archivos temporales creados
-				  // if(remove(script_filename) != 0) {
-					//   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
-				  // }
-				   //free(script_filename);
-				   //free(instruccion);
+				   if(remove(script_filename) != 0) {
+					   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+				   }
+				   free(script_filename);
+				   free(instruccion);
 
 				break;
 			}
@@ -312,8 +306,11 @@ int processRequest(uint8_t task_code, void* pedido){
 					log_error(logger, "WORKER - Error al hacer handshake con Filesystem (%d)",status);
 					break;
 				}
+
+				log_trace(logger, "WORKER - Almacenando en yamafs: %s", request->final_file);
 				status = fs_upload_file(socket_filesystem, request->final_file, TEXT, archivo_a_enviar->filesize, archivo_a_enviar->file, logger);
 
+				//TODO agregar detalle de error
 				if (status==SUCCESS){
 					result = SUCCESS;
 				}else {
@@ -445,7 +442,7 @@ void leer_linea(t_estructura_loca_apareo *est_apareo){
 			est_apareo->linea = malloc(est_apareo->longitud_linea + 1);
 			socket_recv(&(est_apareo->fd), est_apareo->linea, est_apareo->longitud_linea);
 			est_apareo->linea[est_apareo->longitud_linea] = '\0';
-			log_trace(logger, "auxiliar fd: %d. Linea recibida: %s", est_apareo->fd, est_apareo->linea);
+			//log_trace(logger, "auxiliar fd: %d. Linea recibida: %s", est_apareo->fd, est_apareo->linea);
 		}
 	} else {
 
@@ -521,7 +518,39 @@ bool quedan_datos_por_leer(t_list *lista){
 	return list_any_satisfy(lista, linea_no_nula);
 }
 
+
+char *temporal_get_string_time_bis() {
+	struct tm *log_tm = malloc(sizeof(struct tm));
+	char *str_time = string_duplicate("hh_mm_ss_mmmm");
+	struct timeb tmili;
+	time_t log_time;
+
+	if ((log_time = time(NULL)) == -1) {
+		error_show("Error getting date!");
+		return 0;
+	}
+
+	localtime_r(&log_time, log_tm);
+
+	if (ftime(&tmili)) {
+		error_show("Error getting time!");
+		return 0;
+	}
+
+	char *partial_time = string_duplicate("hh_mm_ss");
+	strftime(partial_time, 127, "%H_%M_%S", log_tm);
+	sprintf(str_time, "%s_%hu", partial_time, tmili.millitm);
+	free(partial_time);
+	free(log_tm);
+
+	//Adjust memory allocation
+	str_time = realloc(str_time, strlen(str_time) + 1);
+	return str_time;
+}
+
+
 void gen_random(char *s, const int len) {
+
     static const char alphanum[] =
         "0123456789"
         "abcdefghijklmnopqrstuvwxyz";
@@ -530,4 +559,36 @@ void gen_random(char *s, const int len) {
         s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
     }
     s[len] = 0;
+}
+
+void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
+	log_trace(logger, "Mandando archivo temporal: \n file_descriptor: %d\n nombre_temporal_local: %s", fd, nombre_archivo);
+	char *ruta_archivo = string_from_format("%s%s", PATH, nombre_archivo);
+	log_trace(logger,"%s RUTA DE ARCHIVO REDUCCION LOCAL", ruta_archivo);
+	FILE *f = fopen(ruta_archivo, "r");
+	fseek(f, 0L, SEEK_END);
+	unsigned long len = ftell(f);
+	fseek(f, 0L, SEEK_SET);
+	char *linea = NULL, *buffer;
+	size_t size = 0;
+	buffer = malloc(len);
+	int offset = 0;
+	while((getline(&linea, &size, f) != -1)){
+		int len_linea = strlen(linea);
+		buffer = realloc(buffer, len + sizeof(int));
+		len += sizeof(int);
+		memcpy(buffer + offset, &len_linea, sizeof(int));
+		offset += sizeof(int);
+		memcpy(buffer + offset, linea, len_linea);
+		offset += len_linea;
+	}
+	char fin = '\0';
+	int aa = 0;
+//	memcpy(buffer + offset, &fin, sizeof(char));
+//	offset += sizeof(int);
+
+	buffer = realloc(buffer, len + sizeof(int));
+
+	memcpy(buffer + offset, &aa, sizeof(int));
+	int enviado = socket_send(&fd, buffer, len + sizeof(int), 0);
 }

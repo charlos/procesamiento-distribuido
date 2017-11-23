@@ -35,6 +35,7 @@
 #define ALMACENAMIENTO_EN_PROCESO		  11
 #define ALMACENAMIENTO_OK 	  		   	  12
 #define ALMACENAMIENTO_ERROR              13
+#define	NODO_DESCONECTADO				  14
 
 // CODIGOS DE RESPUESTAS
 #define	EXITO      				  	       1

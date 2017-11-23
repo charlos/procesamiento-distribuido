@@ -98,14 +98,17 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 			send_recv_status(socket_worker, response_task->exec_code);
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
+				//result = NODO_DESCONECTADO;
 				result = TRANSF_ERROR;
 			} else {
 				result = traducir_respuesta(response_task->result_code, TRANSFORMACION);
 			}
 		} else {
+			// result = NODO_DESCONECTADO;
 			result = TRANSF_ERROR;
 		}
 	} else {
+		//result = NODO_DESCONECTADO;
 		result = TRANSF_ERROR;
 	}
 
@@ -189,7 +192,7 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 
 	liberar_combo_ip(ip_port);
 	struct_file * file = read_file(pedido->ruta_reduc);
-
+	log_trace(logger, "socket de nodo designado: %d", nodo_enc_socket);
 	if(nodo_enc_socket > 0) {
 		// Se envia script y lista de nodos a worker designado
 		int status = global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);

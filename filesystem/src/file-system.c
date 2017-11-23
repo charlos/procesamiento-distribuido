@@ -392,7 +392,9 @@ int connect_node(int * node_fd, char * node_name, char * node_ip_port, int block
 		node = (t_fs_node *) list_get(nodes_list, index);
 		if (strcmp(node_name, (node->node_name)) == 0) {
 			node_exists = true;
-			already_connected = ((node->fd) >= 0);
+			if (!is_disconnected(node)) {
+				already_connected = true;
+			}
 			break;
 		}
 		index++;
@@ -2830,10 +2832,15 @@ int execute_line(char * line) {
 
 	char * line_aux = string_duplicate(line);
 	int i = 0;
-	while (line_aux[i] != ' ') i++;
-	char * word = malloc(sizeof(char) * i);
-	strncpy(word, line_aux, i);
-	word[i] = '\0';
+	char * word;
+	if(string_contains(line, " ")){
+		while (line_aux[i] != ' ') i++;
+		word = malloc(sizeof(char) * i);
+		strncpy(word, line_aux, i);
+		word[i] = '\0';
+	} else word = string_duplicate(line_aux);
+
+
 	t_command * command = find_command (word);
 
 	i++;
