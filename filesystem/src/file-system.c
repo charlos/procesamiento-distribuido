@@ -392,7 +392,9 @@ int connect_node(int * node_fd, char * node_name, char * node_ip_port, int block
 		node = (t_fs_node *) list_get(nodes_list, index);
 		if (strcmp(node_name, (node->node_name)) == 0) {
 			node_exists = true;
-			already_connected = ((node->fd) >= 0);
+			if (!is_disconnected(node)) {
+				already_connected = true;
+			}
 			break;
 		}
 		index++;
