@@ -75,21 +75,24 @@ typedef struct {
 t_metricas * metricas;
 
 master_cfg * crear_config();
-
 struct_file * read_file(char * path);
+respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
+
+pedido_master * crear_pedido_yama(char ** argv);
+void atender_solicitud(t_yama_planificacion_resp *solicitud);
 void atender_respuesta_transform(respuesta_yama_transform * resp);
 void atender_respuesta_reduccion(t_red_local * respuesta);
-pedido_master * crear_pedido_yama(char ** argv);
+void resolver_reduccion_global(t_yama_planificacion_resp *solicitud);
+void atender_respuesta_almacenamiento(t_yama_planificacion_resp * solicitud);
+void inicializar_estadisticas();
+
 void liberar_respuesta_transformacion(respuesta_yama_transform *respuesta);
 void liberar_respuesta_reduccion_local(t_red_local *respuesta);
+
 void crear_hilo_transformador(t_transformacion *transformacion, int job_id);
 void crear_hilo_reduccion_local(t_red_local *reduccion);
-respuesta_yama_transform *crear_transformacion_master(t_transformacion *transformacion_yama);
-void atender_solicitud(t_yama_planificacion_resp *solicitud);
-void inicializar_estadisticas();
 int calcular_promedio(t_list * lista_tiempo_ejecucion);
 int traducir_respuesta(int respuesta, int etapa);
-void resolver_reduccion_global(t_yama_planificacion_resp *solicitud);
 void imprimir_estadisticas();
 
 #endif /* MASTER_H_ */

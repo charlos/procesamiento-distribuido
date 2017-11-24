@@ -245,6 +245,42 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 	//list_add(est_reduccion_global->tiempo_ejecucion_hilos, &dif_tiempo);
 	est_reduccion_global->reg_promedio += dif_tiempo;
 }
+void atender_respuesta_almacenamiento(t_yama_planificacion_resp * solicitud) {
+	log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
+	t_almacenamiento *almacenamiento = list_get(solicitud->planificados, 0);
+	log_trace(logger, "Almacenamient: nombre de archivo final %s", almacenamiento->archivo_rg);
+	ip_port_combo * ip_port_combo = split_ipport(almacenamiento->ip_puerto);
+	int nodo_enc_socket;
+	int result;
+	nodo_enc_socket = connect_to_socket(ip_port_combo->ip, ip_port_combo->port);
+
+	if(nodo_enc_socket > 0) {
+		// enviar solicitus a worker
+		int status = final_storage_req_send(nodo_enc_socket, almacenamiento->archivo_rg, pedido->ruta_resul, logger);
+
+		if(status > 0) {
+
+			// recibir archivo y ruta
+			t_response_task * response = task_response_recv(nodo_enc_socket, logger);
+
+			if(response->exec_code == DISCONNECTED_CLIENT) {
+				result = ALMACENAMIENTO_ERROR;
+			} else {
+				result = traducir_respuesta(response->result_code, ALMACENAMIENTO);
+			}
+		}
+		else {
+			result = ALMACENAMIENTO_ERROR;
+		}
+	}
+	else {
+		result = ALMACENAMIENTO_ERROR;
+	}
+
+	// guardar
+	yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
+	liberar_combo_ip(ip_port_combo);
+}
 
 struct_file * read_file(char * path) {
 	FILE * file;
@@ -377,6 +413,8 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
+
+//		atender_respuesta_almacenamiento(solicitud);
 		log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
 		t_almacenamiento *almacenamiento = list_get(solicitud->planificados, 0);
 		log_trace(logger, "Almacenamient: nombre de archivo final %s", almacenamiento->archivo_rg);
@@ -407,7 +445,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 			result = ALMACENAMIENTO_ERROR;
 		}
 
-		// guardar?
+		// guardar
 		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
 		liberar_combo_ip(ip_port_combo);
 
