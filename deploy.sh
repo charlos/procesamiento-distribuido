@@ -6,15 +6,21 @@ export LC_ALL=C
 SCRIPT=$(readlink -f $0);
 dir_base=`dirname $SCRIPT`;
 
+# se descargan scripts para datasets
+	if [ -d "SO-Nombres-Dataset" ]; then rm -Rf SO-Nombres-Dataset; fi
+	git clone https://github.com/iago64/SO-Nombres-Dataset.git
+	cd $dir_base/SO-Nombres-Dataset
+	sudo chmod 777 *.py
+	cd $dir_base
+
 # se descarga y se instala so-commons
 	if [ -d "so-commons-library" ]; then rm -Rf so-commons-library; fi
-	mkdir so-commons-library
 	git clone https://dromero-7854:ASDzxc7854@github.com/sisoputnfrba/so-commons-library.git ./so-commons-library
 	cd ./so-commons-library
 	make
 	sudo make install
-	cd ..
-	rm -Rf so-commons-library;
+	#cd ..
+	#rm -Rf so-commons-library;
 
 # se descarga y se instala readline
 	sudo apt-get install libreadline6 libreadline6-dev
