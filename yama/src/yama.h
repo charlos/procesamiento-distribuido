@@ -42,6 +42,7 @@ typedef struct {
 	char * archivo_rg;
 	uint32_t wl_total_nodo;
 	t_yama_carga_nodo * carga;
+	uint8_t rl_a_esperar;
 } t_yama_nodo_job;
 
 typedef struct {

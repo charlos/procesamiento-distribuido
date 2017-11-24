@@ -82,10 +82,12 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 
 	struct timeval tiempo_inicio, tiempo_fin;
 	uint32_t dif_tiempo;
+	t_estadisticas * est_transformacion = metricas->metricas_transformacion;
+	ip_port_combo * combo = split_ipport(respuesta->ip_port);
+
 	gettimeofday(&tiempo_inicio, NULL);
 
 	log_trace(logger, "Job: %d - Se creo hilo para transformacion", job_id);
-	ip_port_combo * combo = split_ipport(respuesta->ip_port);
 
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
 	int result;
@@ -98,18 +100,21 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 			send_recv_status(socket_worker, response_task->exec_code);
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
-				//result = NODO_DESCONECTADO;
-				result = TRANSF_ERROR;
+				result = NODO_DESCONECTADO;
+				//result = TRANSF_ERROR;
 			} else {
 				result = traducir_respuesta(response_task->result_code, TRANSFORMACION);
 			}
 		} else {
-			// result = NODO_DESCONECTADO;
-			result = TRANSF_ERROR;
+			result = NODO_DESCONECTADO;
+			//result = TRANSF_ERROR;
 		}
 	} else {
-		//result = NODO_DESCONECTADO;
-		result = TRANSF_ERROR;
+		result = NODO_DESCONECTADO;
+		//result = TRANSF_ERROR;
+	}
+	if(result == TRANSF_ERROR || result == NODO_DESCONECTADO) {
+		est_transformacion->cant_fallos_job++;
 	}
 
 	yama_registrar_resultado_transf_bloque(yama_socket, job_id, respuesta->nodo, respuesta->bloque, result, logger);
@@ -120,26 +125,28 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 	log_trace(logger, "Job: %d - Termina hilo para transformacion", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-	t_estadisticas * est_transformacion = metricas->metricas_transformacion;
-	list_add(est_transformacion->tiempo_ejecucion_hilos, &dif_tiempo);
+
+	//list_add(est_transformacion->tiempo_ejecucion_hilos, &dif_tiempo);
 	est_transformacion->reg_promedio += dif_tiempo;
 }
 void atender_respuesta_reduccion(t_red_local * respuesta) {
 	struct timeval tiempo_inicio, tiempo_fin;
 	uint32_t dif_tiempo;
+	ip_port_combo * combo = split_ipport(respuesta->ip_puerto);
+	t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
+	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
+
 	gettimeofday(&tiempo_inicio, NULL);
 
 	log_trace(logger, "Job: %d - Se creo hilo para reduccion local", job_id);
-	ip_port_combo * combo = split_ipport(respuesta->ip_puerto);
+
 	int socket_worker = connect_to_socket(combo->ip, combo->port);
 	int result;
-	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
 
 	if(socket_worker > 0) {
 		int status = local_reduction_req_send(socket_worker, respuesta->archivos_temp, respuesta->archivo_rl_temp, script_reduccion->filesize, script_reduccion->file, logger);
 
 		if(status > 0) {
-			// TODO Manejar si el send salio mal
 			t_response_task * response_task = task_response_recv(socket_worker, logger);
 			send_recv_status(socket_worker, response_task->exec_code);
 
@@ -156,6 +163,9 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	}
 
 
+	if(result == REDUC_LOCAL_ERROR || result == NODO_DESCONECTADO) {
+		est_reduccion_local->cant_fallos_job++;
+	}
 
 	yama_registrar_resultado(yama_socket, job_id, respuesta->nodo, RESP_REDUCCION_LOCAL, result, logger);
 	closure_rl(respuesta);
@@ -168,8 +178,8 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	log_trace(logger, "Job: %d - Termino hilo para reduccion local", job_id);
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-	t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
-	list_add(est_reduccion_local->tiempo_ejecucion_hilos, &dif_tiempo);
+
+	//list_add(est_reduccion_local->tiempo_ejecucion_hilos, &dif_tiempo);
 	est_reduccion_local->reg_promedio += dif_tiempo;
 
 }
@@ -180,13 +190,15 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 
 	struct timeval tiempo_inicio, tiempo_fin;
 	uint32_t dif_tiempo;
+	t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
+	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
+
 	gettimeofday(&tiempo_inicio, NULL);
 
 	for(i = 0; i < list_size(solicitud->planificados); i++) {
 		nodo_encargado = list_get(solicitud->planificados, i);
 		if(nodo_encargado->designado)break;
 	}
-	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
 	nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
 	int result;
 
@@ -220,15 +232,54 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 	else {
 		result = REDUC_GLOBAL_ERROR;
 	}
+	if(result == REDUC_GLOBAL_ERROR) {
+		est_reduccion_global->cant_fallos_job++;
+	}
 
 	yama_registrar_resultado(yama_socket, job_id, nodo_encargado->nodo, RESP_REDUCCION_GLOBAL, result, logger);
 
 
 	gettimeofday(&tiempo_fin, NULL);
 	dif_tiempo = ((tiempo_fin.tv_sec*1e6 + tiempo_fin.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-	t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
-	list_add(est_reduccion_global->tiempo_ejecucion_hilos, &dif_tiempo);
+
+	//list_add(est_reduccion_global->tiempo_ejecucion_hilos, &dif_tiempo);
 	est_reduccion_global->reg_promedio += dif_tiempo;
+}
+void atender_respuesta_almacenamiento(t_yama_planificacion_resp * solicitud) {
+	log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
+	t_almacenamiento *almacenamiento = list_get(solicitud->planificados, 0);
+	log_trace(logger, "Almacenamient: nombre de archivo final %s", almacenamiento->archivo_rg);
+	ip_port_combo * ip_port_combo = split_ipport(almacenamiento->ip_puerto);
+	int nodo_enc_socket;
+	int result;
+	nodo_enc_socket = connect_to_socket(ip_port_combo->ip, ip_port_combo->port);
+
+	if(nodo_enc_socket > 0) {
+		// enviar solicitus a worker
+		int status = final_storage_req_send(nodo_enc_socket, almacenamiento->archivo_rg, pedido->ruta_resul, logger);
+
+		if(status > 0) {
+
+			// recibir archivo y ruta
+			t_response_task * response = task_response_recv(nodo_enc_socket, logger);
+
+			if(response->exec_code == DISCONNECTED_CLIENT) {
+				result = ALMACENAMIENTO_ERROR;
+			} else {
+				result = traducir_respuesta(response->result_code, ALMACENAMIENTO);
+			}
+		}
+		else {
+			result = ALMACENAMIENTO_ERROR;
+		}
+	}
+	else {
+		result = ALMACENAMIENTO_ERROR;
+	}
+
+	// guardar
+	yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
+	liberar_combo_ip(ip_port_combo);
 }
 
 struct_file * read_file(char * path) {
@@ -362,6 +413,8 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		break;
 	case ALMACENAMIENTO:
 //		nodo_encargado = malloc(sizeof(t_red_global));
+
+//		atender_respuesta_almacenamiento(solicitud);
 		log_trace(logger, "Job: %d - Iniciando Almacenamiento", job_id);
 		t_almacenamiento *almacenamiento = list_get(solicitud->planificados, 0);
 		log_trace(logger, "Almacenamient: nombre de archivo final %s", almacenamiento->archivo_rg);
@@ -392,7 +445,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 			result = ALMACENAMIENTO_ERROR;
 		}
 
-		// guardar?
+		// guardar
 		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
 		liberar_combo_ip(ip_port_combo);
 
