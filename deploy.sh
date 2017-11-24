@@ -23,6 +23,7 @@ dir_base=`dirname $SCRIPT`;
 	cd $dir_base/shared-library/shared-library
 	make clean
 	make all
+	sudo cp libshared-library.so /usr/lib/
 
 # master
 	cd $dir_base/master/src
