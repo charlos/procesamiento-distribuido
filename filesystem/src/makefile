@@ -2,7 +2,7 @@ CC := gcc
 CFLAGS := -Wall
 ISL := -I../../shared-library
 LSL := -L../../shared-library/shared-library
-LIBS := -lcommons -lpthread -lshared-library 
+LIBS := -lcommons -lpthread -lshared-library -lreadline
 
 OBJS := file-system.o
 HDRS := file-system.h
