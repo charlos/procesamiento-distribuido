@@ -172,7 +172,7 @@ int main(int argc, char * argv[]) {
  * @NAME load_fs_properties
  */
 void load_fs_properties(void) {
-	t_config * conf = config_create("/home/utnso/file-system.cfg");
+	t_config * conf = config_create("./file-system.cfg");
 	fs_conf = malloc(sizeof(t_fs_conf));
 	fs_conf->port = config_get_int_value(conf, "PUERTO");
 	fs_conf->mount_point = string_duplicate(config_get_string_value(conf, "MONTAJE"));

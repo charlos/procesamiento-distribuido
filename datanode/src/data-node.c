@@ -23,7 +23,7 @@ void get_block(void);
 void create_logger(void);
 
 int main(int argc, char * argv[]) {
-	load_dn_properties(argv[1]); // TODO: ¿el archivo properties se pasa por parámetro?
+	load_dn_properties(argv[1]); // el archivo properties se pasa por parámetro
 	create_logger();
 	init();
 

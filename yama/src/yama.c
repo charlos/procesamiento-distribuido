@@ -45,7 +45,7 @@ void info_job(int);
 void info_job(int);
 void info_carga();
 void incluir_nodos_para_balanceo(t_fs_metadata_file *);
-void incluir_nodo_job(t_yama_job *, t_list *, char *, char *, int, int, int, t_list *, t_yama_carga_nodo *);
+void incluir_nodo_job(t_yama_job *, t_list *, char *, char *, int, int, int, t_list *, t_yama_carga_nodo *, bool);
 void crear_log(void);
 void cierre_t(t_transformacion *);
 void cierre_rl(t_red_local *);
@@ -72,6 +72,7 @@ int atender_solicitud_master(int *);
 char * get_result_message(int);
 char * get_fs_error_message(int16_t);
 bool is_number(char *);
+bool transformacion_replanificable(t_yama_transformacion *);
 
 int main(void) {
 
@@ -111,7 +112,7 @@ int main(void) {
  * @NAME cargar_configuracion
  */
 void cargar_configuracion(void) {
-	t_config * conf = config_create("/home/utnso/yama.cfg");
+	t_config * conf = config_create("./yama.cfg");
 	yama_conf = malloc(sizeof(t_yama_conf));
 	yama_conf->puerto = config_get_int_value(conf, "PUERTO");
 	yama_conf->fs_ip = string_duplicate(config_get_string_value(conf, "FS_IP"));
@@ -177,6 +178,7 @@ void recibir_solicitudes_master(void) {
 		select(set_fd_max + 1, &lectura, NULL, NULL, NULL);
 		for (fd_seleccionado = 0 ; fd_seleccionado <= set_fd_max; fd_seleccionado++) {
 			if (FD_ISSET(fd_seleccionado, &lectura)) {
+				// TODO: atender desconexion master, limpiar carga de nodos
 				if (fd_seleccionado == listening_socket) {
 					if ((nuevaConexion = accept_connection(listening_socket)) == -1) {
 						log_error(logger, " error al aceptar una nueva conexión");
@@ -278,7 +280,7 @@ void procesar_nueva_solicitud(int * socket_cliente, char * archivo) {
 		t_list * planificados = planificar_etapa_transformacion(metadata);
 		yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, new_job_id, planificados);
 		log_trace(logger, " socket %d - nuevo JOB procesado exitosamente [job id %d]", * socket_cliente, new_job_id);
-		printf("\n socket %d - nuevo JOB procesado exitosamente [job id %d]", * socket_cliente, new_job_id);
+		printf(" socket %d - nuevo JOB procesado exitosamente [job id %d] \n", * socket_cliente, new_job_id);
 
 		list_destroy_and_destroy_elements(planificados, &cierre_t);
 		list_destroy_and_destroy_elements((metadata->block_list), &cierre_bamd);
@@ -286,7 +288,7 @@ void procesar_nueva_solicitud(int * socket_cliente, char * archivo) {
 		free(metadata);
 	} else {
 		log_error(logger, "  socket %d - error al procesar nuevo JOB: %s", * socket_cliente, get_fs_error_message(resp->exec_code));
-		printf("\n socket %d - error al procesar nuevo JOB: %s", * socket_cliente, get_fs_error_message(resp->exec_code));
+		printf(" socket %d - error al procesar nuevo JOB: %s\n", * socket_cliente, get_fs_error_message(resp->exec_code));
 		yama_planificacion_send_resp(socket_cliente, (resp->exec_code), FINALIZADO_ERROR, -1, NULL);
 	}
 	free(resp);
@@ -458,7 +460,7 @@ void balanceo_de_carga(t_yama_job * job, t_fs_file_block_metadata * bloque_archi
 			if ((strcmp((carga_nodo->nodo), (copia->nodo)) == 0) && ((carga_nodo->disponibilidad) > 0)) {
 
 				copia->planificada = true;
-				incluir_nodo_job(job, planificados, (copia->nodo), (copia->ip_puerto), (bloque_archivo_md->file_block), (copia->bloque_nodo), (bloque_archivo_md->size), copias_bloque, carga_nodo);
+				incluir_nodo_job(job, planificados, (copia->nodo), (copia->ip_puerto), (bloque_archivo_md->file_block), (copia->bloque_nodo), (bloque_archivo_md->size), copias_bloque, carga_nodo, false);
 				(carga_nodo->disponibilidad)--;
 
 				clock_aux++; // avanzo clock
@@ -497,7 +499,7 @@ void balanceo_de_carga(t_yama_job * job, t_fs_file_block_metadata * bloque_archi
 /**
  * @NAME incluir_nodo_job
  */
-void incluir_nodo_job(t_yama_job * job, t_list * planificados, char * nodo, char * ip_puerto, int bloque_archivo, int bloque_nodo, int bytes_ocupados, t_list * copias, t_yama_carga_nodo * carga_nodo) {
+void incluir_nodo_job(t_yama_job * job, t_list * planificados, char * nodo, char * ip_puerto, int bloque_archivo, int bloque_nodo, int bytes_ocupados, t_list * copias, t_yama_carga_nodo * carga_nodo, bool replanificacion) {
 
 	t_list * transformaciones;
 	t_list * nodos = (job->nodos);
@@ -524,8 +526,15 @@ void incluir_nodo_job(t_yama_job * job, t_list * planificados, char * nodo, char
 		nodo_job->archivo_rg = string_new();
 		nodo_job->wl_total_nodo = 0;
 		nodo_job->carga = carga_nodo;
+		nodo_job->rl_a_esperar = 0;
 		transformaciones = (nodo_job->transformaciones);
 		list_add(nodos, nodo_job);
+	} else {
+		if (replanificacion) {
+			if (nodo_job->estado == REDUC_LOCAL_EN_PROCESO) {
+				(nodo_job->rl_a_esperar)++;
+			}
+		}
 	}
 
 	nodo_job->estado = TRANSF_EN_PROCESO;
@@ -592,63 +601,89 @@ int registrar_resultado_transformacion_bloque(int * socket_cliente) {
 void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo, int bloque, int resultado) {
 
 	log_trace(logger, " socket %d - [job id %d] - ET - registrando resultado - nodo \"%s\", bloque %d, resultado: %s", * socket_cliente, job_id, nodo, bloque, get_result_message(resultado));
-	printf("\n socket %d - [job id %d] - ET - registrando resultado - nodo \"%s\", bloque %d, resultado: %s", * socket_cliente, job_id, nodo, bloque, get_result_message(resultado));
+	printf(" socket %d - [job id %d] - ET - registrando resultado - nodo \"%s\", bloque %d, resultado: %s\n", * socket_cliente, job_id, nodo, bloque, get_result_message(resultado));
 
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 	t_yama_transformacion * transf;
 
-	int i = 0;
-	int j;
-	int k;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	int transf_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (strcmp((nodo_j->nodo), nodo) == 0) {
-					k = 0;
-					while (k < (nodo_j->transformaciones->elements_count)) {
+					transf_index = 0;
+					while (transf_index < (nodo_j->transformaciones->elements_count)) {
 
-						transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), k);
+						transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), transf_index);
 
 						if ((transf->bloque_nodo) == bloque) {
 
 							transf->estado = resultado; // registro resultado transformacion
 
 							if ((job->etapa) == FINALIZADO_ERROR) {
+
 								log_error(logger, " socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO", * socket_cliente, job_id);
-								printf("\n socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO", * socket_cliente, job_id);
+								printf(" socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO\n", * socket_cliente, job_id);
 
 								// el job finalizo antes
-								// error previo en otra transformacion perteneciente al mismo job
-								(nodo_j->carga->wl)--; // reducir carga nodo
+								// por un error previo en otra transformacion perteneciente al mismo job
+								// reducir carga nodo
+								(nodo_j->carga->wl)--;
+								(nodo_j->wl_total_nodo)--;
 
 							} else {
 
-								if (resultado == TRANSF_ERROR) {
-									//
-									// replanificacion transformacion
-									//
+								if (resultado == NODO_DESCONECTADO) {
+
 									(nodo_j->carga->wl)--; // reducir carga nodo
-									usleep(1000000 * (yama_conf->retardo_plan)); // delay planificacion
-									t_list * planificados = list_create();
+									(nodo_j->wl_total_nodo)--;
 
-									log_trace(logger, " socket %d - [job id %d] - ET - replanificando transformación con error...", * socket_cliente, job_id);
-									printf("\n socket %d - [job id %d] - ET - replanificando transformación con error...", * socket_cliente, job_id);
-									if (balanceo_de_carga_replanificacion(job, nodo_j, transf, planificados) == EXITO) {
+									bool replanificar = transformacion_replanificable(transf);
+									int index = 0;
+									while (replanificar && (index < (nodo_j->transformaciones->elements_count))) {
+										transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), index);
+										if ((transf->estado) == TRANSF_OK) {
+											replanificar = transformacion_replanificable(transf);
+										}
+										index++;
+									}
 
-										transf = list_remove((nodo_j->transformaciones), k); // se pudo replanificar, remuevo transformacion con error
+									if (replanificar) {
+
+										t_list * planificados = list_create();
+
+										transf = list_remove((nodo_j->transformaciones), transf_index); // remuevo transformación del nodo original
+										balanceo_de_carga_replanificacion(job, nodo_j, transf, planificados);
 										free(transf->archivo_temp);
 										free(transf);
 
+										index = 0;
+										while (index < (nodo_j->transformaciones->elements_count)) {
+											transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), index);
+											if ((transf->estado) == TRANSF_OK) {
+												balanceo_de_carga_replanificacion(job, nodo_j, transf, planificados);
+												transf = (t_yama_transformacion *) list_remove((nodo_j->transformaciones), index); // transformación replanificada, remuevo transformación del nodo original
+												free(transf->archivo_temp);
+												free(transf);
+												(nodo_j->carga->wl)--; // reducir carga nodo
+												(nodo_j->wl_total_nodo)--;
+												continue;
+											}
+											index++;
+										}
+
 										if (((nodo_j->transformaciones)->elements_count) == 0) {
-											// el nodo se quedo sin transformaciones, todas sus transformaciones fueron replanificadas (¿nodo desconectado?)
 											//
+											// el nodo se quedo sin transformaciones, todas sus transformaciones fueron replanificadas (¿nodo desconectado?)
 											// desvinculo el nodo con el job
 											//
-											nodo_j = list_remove((job->nodos), k);
+											nodo_j = list_remove((job->nodos), nodo_index);
 											free(nodo_j->nodo);
 											free(nodo_j->ip_puerto);
 											free(nodo_j->archivo_rl_temp);
@@ -659,22 +694,98 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 
 										yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, job_id, planificados);
 										log_trace(logger, " socket %d - [job id %d] - ET - replanificación exitosa", * socket_cliente, job_id);
-										printf("\n socket %d - [job id %d] - ET - replanificación exitosa", * socket_cliente, job_id);
+										printf(" socket %d - [job id %d] - ET - replanificación exitosa\n", * socket_cliente, job_id);
+
+										list_destroy_and_destroy_elements(planificados, &cierre_t);
+
+									} else {
+
+										nodo_j->estado = TRANSF_ERROR;
+										job->etapa = FINALIZADO_ERROR;
+
+										yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
+										log_error(logger, " socket %d - [job id %d] - FINALIZADO CON ERROR (no hay nodos disponibles para replanificación)", * socket_cliente, job_id);
+										printf(" socket %d - [job id %d] - FINALIZADO CON ERROR (no hay nodos disponibles para replanificación)\n", * socket_cliente, job_id);
+
+										index = 0;
+										while (index < (nodo_j->transformaciones->elements_count)) {
+											transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), index);
+											if ((transf->estado) == TRANSF_OK) {
+												(nodo_j->carga->wl)--; // libero carga por cada transformación OK que no se pudo replanificar
+												(nodo_j->wl_total_nodo)--;
+											}
+											index++;
+										}
+
+									}
+
+								} else if (resultado == TRANSF_ERROR) {
+
+									//
+									// replanificacion transformacion
+									//
+									// reducir carga nodo
+									(nodo_j->carga->wl)--;
+									(nodo_j->wl_total_nodo)--;
+
+									usleep(1000000 * (yama_conf->retardo_plan)); // delay planificacion
+									t_list * planificados = list_create();
+
+									log_trace(logger, " socket %d - [job id %d] - ET - replanificando transformación con error...", * socket_cliente, job_id);
+									printf("socket %d - [job id %d] - ET - replanificando transformación con error...\n", * socket_cliente, job_id);
+
+									if (balanceo_de_carga_replanificacion(job, nodo_j, transf, planificados) == EXITO) {
+
+										transf = list_remove((nodo_j->transformaciones), transf_index); // se pudo replanificar, remuevo transformacion con error
+										free(transf->archivo_temp);
+										free(transf);
+
+										if (((nodo_j->transformaciones)->elements_count) == 0) {
+											//
+											// el nodo se quedo sin transformaciones, todas sus transformaciones fueron replanificadas (¿nodo desconectado?)
+											// desvinculo el nodo con el job
+											//
+											nodo_j = list_remove((job->nodos), nodo_index);
+											free(nodo_j->nodo);
+											free(nodo_j->ip_puerto);
+											free(nodo_j->archivo_rl_temp);
+											free(nodo_j->archivo_rg);
+											list_destroy(nodo_j->transformaciones);
+											free(nodo_j);
+										}
+
+										yama_planificacion_send_resp(socket_cliente, EXITO, TRANSFORMACION, job_id, planificados);
+										log_trace(logger, " socket %d - [job id %d] - ET - replanificación exitosa", * socket_cliente, job_id);
+										printf(" socket %d - [job id %d] - ET - replanificación exitosa\n", * socket_cliente, job_id);
+
 									} else {
 
 										yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 										log_error(logger, " socket %d - [job id %d] - FINALIZADO CON ERROR (no hay nodos disponibles para replanificación)", * socket_cliente, job_id);
-										printf("\n socket %d - [job id %d] - FINALIZADO CON ERROR (no hay nodos disponibles para replanificación)", * socket_cliente, job_id);
+										printf(" socket %d - [job id %d] - FINALIZADO CON ERROR (no hay nodos disponibles para replanificación)\n", * socket_cliente, job_id);
 										info_job(job_id);
 
-										// chequeo si hay algun nodo del job
-										// que finalizó OK su etapa de reducción local, para liberar su carga
-										// en esta etapa, el nodo no tiene oportunidad de enterarse que el job ya finalizó por un error
-										j = 0;
-										nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
-										if ((nodo_j->estado) == REDUC_LOCAL_OK) {
-											(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
-											j++;
+										// verifico las transformaciones que terminaron OK para liberar carga nodo
+										transf_index = 0;
+										while (transf_index < (nodo_j->transformaciones->elements_count)) {
+											transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), transf_index);
+											if ((transf->estado) == TRANSF_OK) {
+												(nodo_j->carga->wl)--;
+												(nodo_j->wl_total_nodo)--;
+											}
+											transf_index++;
+										}
+
+										// chequeo si hay algun nodo del job que finalizó OK su etapa de reducción local, para liberar su carga
+										// en esta etapa, el nodo no tiene oportunidad de enterarse que el job ya finalizó por un error en alguna transformación
+										nodo_index = 0;
+										while (nodo_index < (job->nodos->elements_count)) {
+											nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
+											if ((nodo_j->estado) == REDUC_LOCAL_OK) {
+												(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
+												nodo_j->wl_total_nodo = 0;
+											}
+											nodo_index++;
 										}
 
 									}
@@ -684,14 +795,35 @@ void registrar_resultado_t_bloque(int * socket_cliente, int job_id, char * nodo,
 							}
 							return;
 						}
-						k++;
+						transf_index++;
 					}
 				}
-				j++;
+				nodo_index++;
 			}
 		}
-		i++;
+		job_index++;
 	}
+}
+
+/**
+ * @NAME transformacion_replanificable
+ */
+bool transformacion_replanificable(t_yama_transformacion * transf) {
+	t_yama_copia_bloque * copia;
+	bool sin_nodos_disponibles = true;
+	int index = 0;
+	while (index < (transf->copias->elements_count)) {
+		copia = (t_yama_copia_bloque *) list_get((transf->copias), index);
+		if (!(copia->planificada)) {
+			sin_nodos_disponibles = false;
+			break;
+		}
+		index++;
+	}
+	if (sin_nodos_disponibles) {
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -731,7 +863,7 @@ int balanceo_de_carga_replanificacion(t_yama_job * job, t_yama_nodo_job * nodo_j
 			if (!(copia->planificada) && (strcmp((carga_nodo->nodo), (copia->nodo)) == 0) && ((carga_nodo->disponibilidad) > 0)) {
 
 				copia->planificada = true;
-				incluir_nodo_job(job, planificados, (copia->nodo), (copia->ip_puerto), (transf->bloque_archivo), (copia->bloque_nodo), (transf->bytes_ocupados), (transf->copias), carga_nodo);
+				incluir_nodo_job(job, planificados, (copia->nodo), (copia->ip_puerto), (transf->bloque_archivo), (copia->bloque_nodo), (transf->bytes_ocupados), (transf->copias), carga_nodo, true);
 				(carga_nodo->disponibilidad)--;
 
 				clock_aux++; // avanzo clock
@@ -773,47 +905,49 @@ void chequear_inicio_reduccion_local(int * socket_cliente, int job_id, char * no
 
 	log_trace(logger, " socket %d - [job id %d] - chequeando inicio de reducción local...", * socket_cliente, job_id);
 
+	bool nodo_existe = false; // el nodo pudo ser excluido del job por no tener transformaciones (todas fueron replanificadas a otros nodos ¿nodo desconectado?)
 	bool planificar_rl = true;
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 	t_yama_transformacion * transf;
 
-	int i = 0;
-	int j;
-	int k;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	int transf_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (strcmp((nodo_j->nodo), nodo) == 0) {
+					nodo_existe = true;
 					if ((nodo_j->estado) == TRANSF_ERROR) {
 						//
 						// hubo una transformación en el nodo que no se pudo replanificar
 						//
 						planificar_rl = false;
 					} else if ((nodo_j->estado) == TRANSF_EN_PROCESO) {
-						k = 0;
-						while (k < (nodo_j->transformaciones->elements_count)) {
-							transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), k);
+						transf_index = 0;
+						while (transf_index < (nodo_j->transformaciones->elements_count)) {
+							transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), transf_index);
 							if (transf->estado != TRANSF_OK) {
 								planificar_rl = false;
 								break;
 							}
-							k++;
+							transf_index++;
 						}
 					}
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
-	if (planificar_rl) {
+	if (nodo_existe && planificar_rl) {
 		log_trace(logger, " socket %d - [job id %d] - planificando etapa de reducción local...", * socket_cliente, job_id);
 		usleep(1000000 * (yama_conf->retardo_plan)); // delay planificacion
 		planificar_etapa_reduccion_local_nodo(socket_cliente, job_id, nodo);
@@ -833,15 +967,15 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 	t_yama_nodo_job * nodo_j;
 	t_yama_transformacion * transf;
 
-	int i = 0;
-	int j;
-	int k;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	int transf_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (strcmp((nodo_j->nodo), nodo) == 0) {
 
 					char * archivo_rl_temp = string_new();
@@ -849,6 +983,7 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 
 					job->etapa = REDUCCION_LOCAL;
 					nodo_j->estado = REDUC_LOCAL_EN_PROCESO;
+					(nodo_j->rl_a_esperar)++;
 
 					free(nodo_j->archivo_rl_temp);
 					nodo_j->archivo_rl_temp = string_duplicate(archivo_rl_temp);
@@ -862,27 +997,27 @@ void planificar_etapa_reduccion_local_nodo(int * socket_cliente, int job_id, cha
 					transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), 0);
 					string_append(&(red_local->archivos_temp), (transf->archivo_temp));
 
-					k = 1;
-					while (k < (nodo_j->transformaciones->elements_count)) {
-						transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), k);
+					transf_index = 1;
+					while (transf_index < (nodo_j->transformaciones->elements_count)) {
+						transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), transf_index);
 						string_append_with_format(&(red_local->archivos_temp), ";%s", (transf->archivo_temp));
-						k++;
+						transf_index++;
 					}
 
 					free(archivo_rl_temp);
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
 	list_add(planificados, red_local);
 	yama_planificacion_send_resp(socket_cliente, EXITO, REDUCCION_LOCAL, job_id, planificados);
 	log_trace(logger, " socket %d - [job id %d] - ERL planificado - nodo \"%s\"", * socket_cliente, job_id, nodo);
-	printf("\n socket %d - [job id %d] - ERL planificado - nodo \"%s\"", * socket_cliente, job_id, nodo);
+	printf(" socket %d - [job id %d] - ERL planificado - nodo \"%s\"\n", * socket_cliente, job_id, nodo);
 
 	list_destroy_and_destroy_elements(planificados, &cierre_rl);
 }
@@ -925,31 +1060,42 @@ int registrar_resultado_reduccion_local(int * socket_cliente) {
 void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int resultado) {
 
 	log_trace(logger, " socket %d - [job id %d] - ERL - registrando resultado - nodo \"%s\", resultado: %s", * socket_cliente, job_id, nodo, get_result_message(resultado));
-	printf("\n socket %d - [job id %d] - ERL - registrando resultado - nodo \"%s\", resultado: %s", * socket_cliente, job_id, nodo, get_result_message(resultado));
+	printf(" socket %d - [job id %d] - ERL - registrando resultado - nodo \"%s\", resultado: %s\n", * socket_cliente, job_id, nodo, get_result_message(resultado));
 
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (strcmp((nodo_j->nodo), nodo) == 0) {
+
+					(nodo_j->rl_a_esperar)--;
+					if ((nodo_j->rl_a_esperar) > 0) {
+						// contemplo el caso de que el nodo se encontraba en reduccion local en proceso, y fue seleccionado para una replanificacion
+						// espero a que ambas reducciones (la original y la replanificada) terminen, para estar seguro que incluye todas las transformaciones (originales y las incluidas en la replanificación)
+						// no considero la respuesta de la reducción local
+						log_trace(logger, " socket %d - [job id %d] - ERL - el resultado no se considera, se esperan más respuestas de reducciones locales (el nodo se encontraba en la etapa de reducción local en proceso, cuando fue seleccionado para una replanificación de una transformación) se considera como válida la última respuesta", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - ERL - el resultado no se considera, se esperan más respuestas de reducciones locales (el nodo se encontraba en la etapa de reducción local en proceso, cuando fue seleccionado para una replanificación de una transformación) se considera como válida la última respuesta\n", * socket_cliente, job_id);
+						return;
+					}
 
 					nodo_j->estado = resultado;
 
 					if ((job->etapa) == FINALIZADO_ERROR) {
 
 						log_error(logger, " socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO", * socket_cliente, job_id);
-						printf("\n socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - FINALIZADO POR ERROR PREVIO\n", * socket_cliente, job_id);
 
 						// el job finalizo antes
 						// error previo en reduccion local realizada en otro nodo para el mismo job
 						(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
+						nodo_j->wl_total_nodo = 0;
 
 					} else {
 
@@ -958,20 +1104,24 @@ void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int r
 							// error en reduccion local, no hay replanificacion
 							//
 							(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
+							 nodo_j->wl_total_nodo = 0;
+
 							job->etapa = FINALIZADO_ERROR;
 							yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 							log_error(logger, " socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
-							printf("\n socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
+							printf(" socket %d - [job id %d] - FINALIZADO CON ERROR\n", * socket_cliente, job_id);
 							info_job(job_id);
 
-							// chequeo si hay algun nodo del job
-							// que finalizó OK su etapa de reducción local, para liberar su carga
-							// en esta etapa, el nodo no tiene oportunidad de enterarse que el job ya finalizó por un error
-							j = 0;
-							nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
-							if ((nodo_j->estado) == REDUC_LOCAL_OK) {
-								(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
-								j++;
+							// chequeo si hay algun nodo del job que finalizó OK su etapa de reducción local, para liberar su carga
+							// en esta etapa, el nodo no tiene oportunidad de enterarse que el job ya finalizó por un error en alguna transformación
+							nodo_index = 0;
+							while (nodo_index < (job->nodos->elements_count)) {
+								nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
+								if ((nodo_j->estado) == REDUC_LOCAL_OK) {
+									(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
+									nodo_j->wl_total_nodo = 0;
+								}
+								nodo_index++;
 							}
 
 						}
@@ -980,11 +1130,11 @@ void registrar_resultado_rl(int * socket_cliente, int job_id, char * nodo, int r
 
 					return;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 }
 
@@ -999,23 +1149,23 @@ void chequear_inicio_reduccion_global(int * socket_cliente, int job_id) {
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index= 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (nodo_j->estado != REDUC_LOCAL_OK) {
 					planificar_rg = false;
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
 	if (planificar_rg) {
@@ -1039,23 +1189,23 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 	t_yama_nodo_job * nodo_designado = NULL;
 
 	int cant_red_temp;
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
 			cant_red_temp = (job->nodos->elements_count);
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (nodo_j->estado == REDUC_LOCAL_OK && ((!nodo_designado) || (nodo_j->carga->wl < nodo_designado->carga->wl))) {
 					nodo_designado = nodo_j;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
 	int inc_carga = ((cant_red_temp / 2) + (((cant_red_temp % 2) > 0) ? 1 : 0));
@@ -1067,14 +1217,14 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 	t_list * planificados = list_create();
 	t_red_global * red_global;
 
-	i = 0;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	job_index = 0;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
 			job->etapa = REDUCCION_GLOBAL;
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 
 				if (nodo_j->estado == REDUC_LOCAL_OK) {
 					red_global = (t_red_global *) malloc(sizeof(t_red_global));
@@ -1097,17 +1247,17 @@ void planificar_etapa_reduccion_global(int * socket_cliente, int job_id) {
 					list_add(planificados, red_global);
 				}
 
-				j++;
+				nodo_index++;
 
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
 	yama_planificacion_send_resp(socket_cliente, EXITO, REDUCCION_GLOBAL, job_id, planificados);
 	log_trace(logger, " socket %d - [job id %d] - ERG planificado - nodo designado \"%s\"", * socket_cliente, job_id, (nodo_designado->nodo));
-	printf("\n socket %d - [job id %d] - ERG planificado - nodo designado \"%s\"", * socket_cliente, job_id, (nodo_designado->nodo));
+	printf(" socket %d - [job id %d] - ERG planificado - nodo designado \"%s\"\n", * socket_cliente, job_id, (nodo_designado->nodo));
 
 	list_destroy_and_destroy_elements(planificados, &cierre_rg);
 }
@@ -1151,19 +1301,19 @@ int registrar_resultado_reduccion_global(int * socket_cliente) {
  */
 void registrar_resultado_rg(int * socket_cliente, int job_id, int resultado) {
 	log_trace(logger, " socket %d - [job id %d] - ERG - registrando resultado - resultado: %s", * socket_cliente, job_id, get_result_message(resultado));
-	printf("\n socket %d - [job id %d] - ERG - registrando resultado - resultado: %s", * socket_cliente, job_id, get_result_message(resultado));
+	printf(" socket %d - [job id %d] - ERG - registrando resultado - resultado: %s\n", * socket_cliente, job_id, get_result_message(resultado));
 
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (nodo_j->designado) {
 
 					nodo_j->estado = resultado;
@@ -1173,26 +1323,27 @@ void registrar_resultado_rg(int * socket_cliente, int job_id, int resultado) {
 						// error en reduccion global, no hay replanificacion
 						//
 						// libero cargas de todos los nodos
-						j = 0;
-						while (j < (job->nodos->elements_count)) {
-							nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+						nodo_index = 0;
+						while (nodo_index < (job->nodos->elements_count)) {
+							nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 							(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
-							j++;
+							nodo_j->wl_total_nodo = 0;
+							nodo_index++;
 						}
 						job->etapa = FINALIZADO_ERROR;
 						yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 						log_trace(logger, " socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
-						printf("\n socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - FINALIZADO CON ERROR\n", * socket_cliente, job_id);
 						info_job(job_id);
 					}
 
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 }
 
@@ -1209,15 +1360,15 @@ void planificar_almacenamiento(int * socket_cliente, int job_id) {
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
 			job->etapa = ALMACENAMIENTO;
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (nodo_j->designado) {
 					nodo_j->estado = ALMACENAMIENTO_EN_PROCESO;
 					t_almacenamiento * almacenamiento = (t_almacenamiento *) malloc (sizeof(t_almacenamiento));
@@ -1226,14 +1377,14 @@ void planificar_almacenamiento(int * socket_cliente, int job_id) {
 					almacenamiento->archivo_rg = string_duplicate(nodo_j->archivo_rg);
 					list_add(planificados, almacenamiento);
 					log_trace(logger, " socket %d - [job id %d] - EA planificado - nodo designado \"%s\"", * socket_cliente, job_id, (almacenamiento->nodo));
-					printf("\n socket %d - [job id %d] - EA planificado - nodo designado \"%s\"", * socket_cliente, job_id, (almacenamiento->nodo));
+					printf(" socket %d - [job id %d] - EA planificado - nodo designado \"%s\"\n", * socket_cliente, job_id, (almacenamiento->nodo));
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 
 	yama_planificacion_send_resp(socket_cliente, EXITO, ALMACENAMIENTO, job_id, planificados);
@@ -1276,29 +1427,30 @@ int registrar_resultado_almacenamiento(int * socket_cliente) {
  */
 void registrar_resultado_a(int * socket_cliente, int job_id, int resultado) {
 	log_trace(logger, " socket %d - [job id %d] - EA - registrando resultado - resultado: %s", * socket_cliente, job_id, get_result_message(resultado));
-	printf("\n socket %d - [job id %d] - EA - registrando resultado - resultado: %s", * socket_cliente, job_id, get_result_message(resultado));
+	printf(" socket %d - [job id %d] - EA - registrando resultado - resultado: %s\n", * socket_cliente, job_id, get_result_message(resultado));
 
 	t_yama_job * job;
 	t_yama_nodo_job * nodo_j;
 
-	int i = 0;
-	int j;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 				if (nodo_j->designado) {
 
 					nodo_j->estado = resultado;
 
 					// libero cargas de todos los nodos (finalizacion del job)
-					j = 0;
-					while (j < (job->nodos->elements_count)) {
-						nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+					nodo_index = 0;
+					while (nodo_index < (job->nodos->elements_count)) {
+						nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 						(nodo_j->carga->wl) -= (nodo_j->wl_total_nodo);
-						j++;
+						nodo_j->wl_total_nodo = 0;
+						nodo_index++;
 					}
 
 					if (resultado == ALMACENAMIENTO_ERROR) {
@@ -1308,24 +1460,24 @@ void registrar_resultado_a(int * socket_cliente, int job_id, int resultado) {
 						job->etapa = FINALIZADO_ERROR;
 						yama_planificacion_send_resp(socket_cliente, ERROR, FINALIZADO_ERROR, job_id, NULL);
 						log_trace(logger, " socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
-						printf("\n socket %d - [job id %d] - FINALIZADO CON ERROR", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - FINALIZADO CON ERROR\n", * socket_cliente, job_id);
 					} else {
 						job->etapa = FINALIZADO_OK;
 						yama_planificacion_send_resp(socket_cliente, EXITO, FINALIZADO_OK, job_id, NULL);
 						log_trace(logger, " socket %d - [job id %d] - EA - finalizado exitosamente", * socket_cliente, job_id);
-						printf("\n socket %d - [job id %d] - EA - finalizado exitosamente", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - EA - finalizado exitosamente\n", * socket_cliente, job_id);
 						log_trace(logger, "**********  socket %d - [job id %d] - FINALIZADO EXITOSAMENTE **********", * socket_cliente, job_id);
-						printf("\n socket %d - [job id %d] - FINALIZADO EXITOSAMENTE", * socket_cliente, job_id);
+						printf(" socket %d - [job id %d] - FINALIZADO EXITOSAMENTE\n", * socket_cliente, job_id);
 					}
 					info_job(job_id);
 
 					break;
 				}
-				j++;
+				nodo_index++;
 			}
 			break;
 		}
-		i++;
+		job_index++;
 	}
 }
 
@@ -1421,9 +1573,9 @@ void yama_console(void * unused) {
 	char * param = NULL;
 	size_t len = 0;
 	ssize_t read;
-	printf("\n[user@yama ~]$:");
 	while ((read = getline(&input, &len, stdin)) != -1) {
 		if (read > 0) {
+			printf("\n");
 			input[read-1] = '\0';
 			input_c = string_duplicate(input);
 			char * token = strtok(input_c, " ");
@@ -1432,7 +1584,7 @@ void yama_console(void * unused) {
 			if (token != NULL) param = token;
 			if (strcmp(command, INFO_JOB_CMD) == 0) {
 				if (param == NULL || !is_number(param)) {
-					printf("\nerror: illegal arguments");
+					printf("error: illegal arguments\n");
 					return;
 				} else {
 					pthread_mutex_lock(&tabla_estados);
@@ -1444,11 +1596,10 @@ void yama_console(void * unused) {
 				info_carga();
 				pthread_mutex_unlock(&tabla_estados);
 			} else {
-				printf("\nerror: command not found");
+				printf("error: command not found\n");
 			}
 		}
 		free(input_c);
-		printf("\n[user@yama ~]$:");
 	}
 }
 
@@ -1463,23 +1614,23 @@ void info_job(int job_id) {
 	t_yama_nodo_job * nodo_j;
 	t_yama_transformacion * transf;
 
-	int i = 0;
-	int j;
-	int k;
-	while (i < (jobs->elements_count)) {
-		job = (t_yama_job *) list_get(jobs, i);
+	int job_index = 0;
+	int nodo_index;
+	int transf_index;
+	while (job_index < (jobs->elements_count)) {
+		job = (t_yama_job *) list_get(jobs, job_index);
 		if ((job->job_id) == job_id) {
 			existe = true;
-			printf("\n    #job-id             #phase        #node                    #ip:port                          #status   #file-block   #node-block                        #t-status                                        #archivo-temp                                     #archivo-rl-temp   #designado                                          #archivo_rg");
-			printf("\n   ________   ________________   __________   _________________________   ______________________________   ___________   ___________   ______________________________   __________________________________________________   __________________________________________________   __________   __________________________________________________");
-			j = 0;
-			while (j < (job->nodos->elements_count)) {
-				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), j);
+			printf("    #job-id             #phase        #node                    #ip:port                          #status   #file-block   #node-block                        #t-status                                        #archivo-temp                                     #archivo-rl-temp   #designado                                          #archivo_rg\n");
+			printf("   ________   ________________   __________   _________________________   ______________________________   ___________   ___________   ______________________________   __________________________________________________   __________________________________________________   __________   __________________________________________________\n");
+			nodo_index = 0;
+			while (nodo_index < (job->nodos->elements_count)) {
+				nodo_j = (t_yama_nodo_job *) list_get((job->nodos), nodo_index);
 
-				k = 0;
-				while (k < (nodo_j->transformaciones->elements_count)) {
-					transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), k);
-					printf("\n   %8d", (job->job_id));
+				transf_index = 0;
+				while (transf_index < (nodo_j->transformaciones->elements_count)) {
+					transf = (t_yama_transformacion *) list_get((nodo_j->transformaciones), transf_index);
+					printf("   %8d", (job->job_id));
 					print_etapa(job->etapa);
 					printf(" | %10s", (nodo_j->nodo));
 					printf(" | %25s", (nodo_j->ip_puerto));
@@ -1490,17 +1641,17 @@ void info_job(int job_id) {
 					printf(" | %50s", (transf->archivo_temp));
 					printf(" | %50s", (nodo_j->archivo_rl_temp));
 					printf(" | %10s", ((nodo_j->designado) ? "SI" : " "));
-					printf(" | %50s", (nodo_j->archivo_rg));
-					k++;
+					printf(" | %50s\n", (nodo_j->archivo_rg));
+					transf_index++;
 				}
-				j++;
+				nodo_index++;
 			}
 		}
-		i++;
+		job_index++;
 	}
 
 	if (!existe) {
-		printf("\nerror: job id not exists.\nplease try again...");
+		printf("error: job id not exists.\nplease try again...\n");
 	}
 
 }
@@ -1651,16 +1802,16 @@ void info_carga() {
 	if (carga_nodos->elements_count > 0) {
 		t_yama_carga_nodo * carga_nodo;
 		int i = 0;
-		printf("\n      #node          #wl        #wl-h");
-		printf("\n   ________   __________   __________");
+		printf("      #node          #wl        #wl-h\n");
+		printf("   ________   __________   __________\n");
 		while (i < (carga_nodos->elements_count)) {
 			carga_nodo = (t_yama_carga_nodo *) list_get(carga_nodos, i);
-			printf("\n   %8s", (carga_nodo->nodo));
+			printf("   %8s", (carga_nodo->nodo));
 			printf(" | %10d", (carga_nodo->wl));
-			printf(" | %10d", (carga_nodo->wl_total));
+			printf(" | %10d\n", (carga_nodo->wl_total));
 			i++;
 		}
 	} else {
-		printf("\n not loaded nodes");
+		printf(" not loaded nodes\n");
 	}
 }
