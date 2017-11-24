@@ -2,6 +2,10 @@
 
 export LC_ALL=C
 
+# se obtiene el directorio desde donde se ejecuta el sh
+SCRIPT=$(readlink -f $0);
+dir_base=`dirname $SCRIPT`;
+
 # se descarga y se instala so-commons
 	if [ -d "so-commons-library" ]; then rm -Rf so-commons-library; fi
 	mkdir so-commons-library
@@ -16,31 +20,31 @@ export LC_ALL=C
 	sudo apt-get install libreadline6 libreadline6-dev
 
 # shared-library
-	cd /shared-library/shared-library
+	cd $dir_base/shared-library/shared-library
 	make clean
 	make all
 
 # master
-	cd /master/src
+	cd $dir_base/master/src
 	make clean
 	make all
 
 # file-system
-	cd /filesystem/src
+	cd $dir_base/filesystem/src
 	make clean
 	make all
 
 # yama
-	cd /yama/src
+	cd $dir_base/yama/src
 	make clean
 	make all
 
 # worker
-	cd /worker/src
+	cd $dir_base/worker/src
 	make clean
 	make all
 
 # data-node
-	cd /datanode/src
+	cd $dir_base/datanode/src
 	make clean
 	make all
