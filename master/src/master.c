@@ -41,21 +41,24 @@ int main(int argc, char ** argv) {
 		respuesta_solicitud = yama_resp_planificacion(yama_socket, logger);
 	}
 	if(respuesta_solicitud->exec_code == SERVIDOR_DESCONECTADO) {
-		log_trace(logger, "El servidor se desconector. Abortando ejecucion");
-		printf("El servidor se desconector. Abortando ejecucion");
-		exit(0);
+		log_trace(logger, "El servidor se desconecto. Abortando ejecucion");
+		printf("El servidor se desconecto. Abortando ejecucion");
+		//exit(0);
 	} else if(respuesta_solicitud->etapa == FINALIZADO_ERROR) {
 		log_trace(logger, "La ejecucion del job [%d] termino con error", job_id);
 		printf("La ejecucion del job [%d] termino con error", job_id);
-		exit(0);
+		//exit(0);
 	} else if(respuesta_solicitud->etapa == FINALIZADO_OK){
-		gettimeofday(&tiempo_finalizacion, NULL);
-		metricas->tiempo_total = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
-		imprimir_estadisticas();
-		log_trace(logger, "Termino ejecucion satisfactoriamente");
+//		gettimeofday(&tiempo_finalizacion, NULL);
+//		metricas->tiempo_total = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
+//		imprimir_estadisticas();
+		log_trace(logger, "Job %d - Termino ejecucion satisfactoriamente", job_id);
 	} else {
 		printf("Error no contemplado");
 	}
+	gettimeofday(&tiempo_finalizacion, NULL);
+	metricas->tiempo_total = ((tiempo_finalizacion.tv_sec*1e6 + tiempo_finalizacion.tv_usec) - (tiempo_inicio.tv_sec*1e6 + tiempo_inicio.tv_usec)) / 1000.0;
+	imprimir_estadisticas();
 
 	return EXIT_SUCCESS;
 }
@@ -500,32 +503,45 @@ void imprimir_estadisticas(){
 	printf("Tiempo de ejecucion total: %d ms  \n", metricas->tiempo_total);
 	printf("Cantidad de fallos: %d\n", metricas->cant_total_fallos_job);
 
-	printf("ETAPA DE TRANSFORMACION\n");
+	printf("\nETAPA DE TRANSFORMACION\n");
 
 
 	//int promedio_transformacion = calcular_promedio(est_transformacion->tiempo_ejecucion_hilos);
 	//printf("Tiempo promedio de ejecucion: %d ms\n", promedio_transformacion);
-	printf("Tiempo promedio de ejecucion: %d ms\n", est_transformacion->reg_promedio/est_transformacion->cant_total_tareas);
+	if(est_transformacion->cant_total_tareas > 0) {
+		printf("Tiempo promedio de ejecucion: %d ms\n", est_transformacion->reg_promedio/est_transformacion->cant_total_tareas);
+	} else {
+		printf("Tiempo promedio de ejecucion: No hubo tareas\n");
+	}
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_transformacion->cant_total_tareas);
 	printf("Cantidad máxima de tareas simultaneas: %d\n", est_transformacion->cant_max_tareas_simultaneas);
 	printf("Cantidad de fallos en la etapa: %d\n", est_transformacion->cant_fallos_job);
 
-	printf("ETAPA DE REDUCCION LOCAL\n");
+	printf("\nETAPA DE REDUCCION LOCAL\n");
 
 	//int promedio_reduccion_local = calcular_promedio(est_reduccion_local->tiempo_ejecucion_hilos);
-	//printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
-	printf("Tiempo promedio de ejecucion: %d ms\n", est_reduccion_local->reg_promedio/est_reduccion_local->cant_total_tareas);
+	//9printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_local);
+	if(est_reduccion_local->cant_total_tareas > 0) {
+		printf("Tiempo promedio de ejecucion: %d ms\n", est_reduccion_local->reg_promedio/est_reduccion_local->cant_total_tareas);
+	} else {
+		printf("Tiempo promedio de ejecucion: No hubo tareas\n");
+	}
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_local->cant_total_tareas);
 	printf("Cantidad máxima de tareas simultaneas: %d\n", est_reduccion_local->cant_max_tareas_simultaneas);
 	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_local->cant_fallos_job);
 
-	printf("ETAPA DE REDUCCION GLOBAL\n");
+	printf("\nETAPA DE REDUCCION GLOBAL\n");
 
 
 	//int promedio_reduccion_global = calcular_promedio(est_reduccion_global->tiempo_ejecucion_hilos);
 	//printf("Tiempo promedio de ejecucion: %d ms\n", promedio_reduccion_global);
+	if(est_reduccion_global->cant_total_tareas > 0) {
+		printf("Tiempo promedio de ejecucion: %d ms\n", est_reduccion_global->reg_promedio/est_reduccion_global->cant_total_tareas);
+	} else {
+		printf("Tiempo promedio de ejecucion: No hubo tareas\n");
+	}
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_global->cant_total_tareas);
 	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_global->cant_fallos_job);
