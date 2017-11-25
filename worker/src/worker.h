@@ -30,7 +30,7 @@
 #define	SOCKET_BACKLOG 			100
 #define BLOCK_SIZE 			1048576
 
-#define PATH   "/home/utnso/yama/"
+#define PATH   "./"
 
 typedef struct{
 	char* filesystem_ip;
