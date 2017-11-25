@@ -8,10 +8,12 @@ dir_base=`dirname $SCRIPT`;
 
 # se descargan scripts para datasets
 	if [ -d "SO-Nombres-Dataset" ]; then rm -Rf SO-Nombres-Dataset; fi
-	git clone https://github.com/iago64/SO-Nombres-Dataset.git
-	cd $dir_base/SO-Nombres-Dataset
-	sudo chmod 777 *.py
-	cd $dir_base
+	#mkdir SO-Nombres-Dataset
+	#git clone https://github.com/iago64/SO-Nombres-Dataset.git
+	curl -u 'charlos' -L -o lastp.tar https://github.com/iago64/SO-Nombres-Dataset/tarball/master
+	#cd $dir_base/SO-Nombres-Dataset
+	#sudo chmod 777 *.py
+	#cd $dir_base
 
 # se descarga y se instala so-commons
 	if [ -d "so-commons-library" ]; then rm -Rf so-commons-library; fi
