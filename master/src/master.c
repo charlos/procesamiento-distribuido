@@ -19,7 +19,7 @@ int main(int argc, char ** argv) {
 				"ERROR: Cantidad de parametros invalida. Deben ser 4: transformador/ruta \nreductor/ruta \nArchivo de origen/ruta \narchivo resultado/ruta");
 		exit(0);
 	}
-	crear_logger(argv[0], &logger, false, LOG_LEVEL_TRACE);
+	crear_logger(argv[0], &logger, true, LOG_LEVEL_TRACE);
 	struct timeval tiempo_inicio, tiempo_finalizacion;
 	inicializar_estadisticas();
 	gettimeofday(&tiempo_inicio, NULL);
@@ -45,8 +45,8 @@ int main(int argc, char ** argv) {
 		printf("El servidor se desconector. Abortando ejecucion");
 		exit(0);
 	} else if(respuesta_solicitud->etapa == FINALIZADO_ERROR) {
-		log_trace(logger, "La ejecucion del job termino con error");
-		printf("La ejecucion del job termino con error");
+		log_trace(logger, "La ejecucion del job [%d] termino con error", job_id);
+		printf("La ejecucion del job [%d] termino con error", job_id);
 		exit(0);
 	} else if(respuesta_solicitud->etapa == FINALIZADO_OK){
 		gettimeofday(&tiempo_finalizacion, NULL);
@@ -191,7 +191,6 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 	struct timeval tiempo_inicio, tiempo_fin;
 	uint32_t dif_tiempo;
 	t_estadisticas * est_reduccion_global = metricas->metricas_reduccion_global;
-	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
 
 	gettimeofday(&tiempo_inicio, NULL);
 
@@ -199,6 +198,7 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 		nodo_encargado = list_get(solicitud->planificados, i);
 		if(nodo_encargado->designado)break;
 	}
+	ip_port_combo * ip_port = split_ipport(nodo_encargado->ip_puerto);
 	nodo_enc_socket = connect_to_socket(ip_port->ip, ip_port->port);
 	int result;
 
@@ -208,7 +208,7 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 	if(nodo_enc_socket > 0) {
 		// Se envia script y lista de nodos a worker designado
 		int status = global_reduction_req_send(nodo_enc_socket, file->filesize, file->file,  solicitud->planificados, logger);
-		log_trace(logger, "Se envio a worker el paquete");
+		log_trace(logger, "Se envio a worker [%s] el paquete", nodo_encargado->nodo);
 
 		unmap_file(file->file, file->filesize);
 		free(file);
@@ -216,6 +216,7 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 		if(status > 0) {
 			// recibir respuesta de worker
 			t_response_task * response_task = task_response_recv(nodo_enc_socket, logger);
+			send_recv_status(nodo_enc_socket, response_task->exec_code);
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
 				result = REDUC_GLOBAL_ERROR;
