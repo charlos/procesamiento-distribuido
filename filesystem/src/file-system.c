@@ -43,6 +43,8 @@ t_list * nodes_list;		// nodes list
 pthread_rwlock_t * directories_locks;
 pthread_mutex_t nodes_table_m_lock;
 
+int node_index = 0;
+
 void write_file(void *, t_config *, int, t_list *);
 void upload_file(int *);
 void set_file_block(t_config *, int, void *);
@@ -294,7 +296,7 @@ void init(bool clean_fs) {
 
 		pos++;
 	}
-
+	
 	init_locks();
 
 	free(nodes_bitmap_path);
@@ -1140,21 +1142,24 @@ int check_fs_space(t_list * required_blocks) {
  * @NAME pre_assign_node
  */
 char * pre_assign_node(char * unwanted_node) {
+
 	t_fs_node * selected_node = NULL;
 	t_fs_node * node;
+
 	int index = 0;
 	while (index < (nodes_list->elements_count)) {
 		node = (t_fs_node *) list_get(nodes_list, index);
 		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
 			index++;
 		} else {
-			if (((node->free_blocks) > 0) && ((!selected_node) || ((node->free_blocks) > (selected_node->free_blocks)))
-					&& (get_datanode_fd(node->node_name) != DISCONNECTED_NODE)) {
+			if (((node->free_blocks) > 0) && (get_datanode_fd(node->node_name) != DISCONNECTED_NODE)) {
 				selected_node = node;
+				break;
 			}
 			index++;
 		}
 	}
+
 	if (!selected_node) {
 		return NULL;
 	} else {
@@ -1171,28 +1176,36 @@ char * assign_node(char * unwanted_node) {
 	char * key;
 	int max = -1;
 	int free_blocks;
-	int index = 0;
+
 	t_fs_node * node;
+	int index = node_index;
 	while (index < (nodes_list->elements_count)) {
 		node = (t_fs_node *) list_get(nodes_list, index);
 		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
 			index++;
+			if (index >= (nodes_list->elements_count))
+				index = 0;
 		} else {
 			if ((node->fd) >= 0) {
 				// connected_node
 				key = string_from_format("%sLibre", (node->node_name));
 				free_blocks = config_get_int_value(nodes_table, key);
 				free(key);
-				if ((free_blocks > 0) && ((max < 0) || (free_blocks > max))) {
-					if (selected_node)
-						free(selected_node);
-					max = free_blocks;
+				if (free_blocks > 0) {
 					selected_node = string_duplicate(node->node_name);
+					index++;
+					if (index >= (nodes_list->elements_count))
+						index = 0;
+					break;
 				}
 			}
 			index++;
+			if (index >= (nodes_list->elements_count))
+				index = 0;
 		}
 	}
+
+	node_index = index;
 	return selected_node;
 }
 
