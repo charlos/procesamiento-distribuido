@@ -11,6 +11,7 @@ dir_base=`dirname $SCRIPT`;
 	#mkdir SO-Nombres-Dataset
 	#git clone https://github.com/iago64/SO-Nombres-Dataset.git
 	curl -u 'charlos' -L -o lastp.tar https://github.com/iago64/SO-Nombres-Dataset/tarball/master
+	tar -xvf $dir_base/lastp.tar
 	#cd $dir_base/SO-Nombres-Dataset
 	#sudo chmod 777 *.py
 	#cd $dir_base
