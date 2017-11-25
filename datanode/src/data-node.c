@@ -23,11 +23,22 @@ void get_block(void);
 void create_logger(void);
 
 int main(int argc, char * argv[]) {
+
+	if (argc != 2) {
+		printf(
+				"ERROR: Cantidad de parametros invalida. Deben indicar ruta del archvo de configuración\n");
+		exit(0);
+	}
+
 	load_dn_properties(argv[1]); // el archivo properties se pasa por parámetro
 	create_logger();
 	init();
 
+	printf("Data-node conectado a Filesystem correctamente\n");
+
+
 	int ope_code = dn_recv_operation_code(&fs_socket, logger);
+
 	while (ope_code != DISCONNECTED_CLIENT) {
 		log_info(logger, " client %d >> operation code : %d", fs_socket, ope_code);
 		switch (ope_code) {
@@ -93,6 +104,7 @@ void init(void) {
 	if ((fs_handshake(fs_socket, DATANODE, (dn_conf->node_name), ip_port, blocks, logger)) != SUCCESS) {
 		// TODO: error handler
 		// fs handshake error
+		printf("Error al conectarse a Filesystem");
 		exit(EXIT_FAILURE);
 	}
 	free(ip_port);

@@ -23,6 +23,12 @@ void * data_bin_mf_ptr;
 
 int main(int argc, char * argv[]) {
 
+	if (argc != 2) {
+		printf(
+				"ERROR: Cantidad de parametros invalida. Deben indicar ruta del archvo de configuración");
+		exit(0);
+	}
+
 	void* buffer;
 	//int child_status;
 	//int buffer_size;
