@@ -234,9 +234,10 @@ int processRequest(uint8_t task_code, void* pedido){
 				break;
 			}
 			case REDUCE_GLOBAL_OC:{
-				t_request_global_reduction * request = (t_request_global_reduction*) pedido;
-				t_red_global *nodo_designado = merge_global(request->lista_nodos_reduccion_global);
-				//TODO armar respuesta
+
+				t_request_global_reduction * request = (t_request_global_reduction *) pedido;
+				t_red_global * nodo_designado = merge_global(request->lista_nodos_reduccion_global);
+
 
 				char *tiempo = temporal_get_string_time_bis();
 				string_append(&script_filename,PATH);
@@ -433,30 +434,54 @@ void * map_file(char * file_path, size_t* size, int flags) {
 	return mapped_file_ptr;
 }
 
-void leer_linea(t_estructura_loca_apareo *est_apareo){
-	if(est_apareo->fd != 0){
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void leer_linea(t_estructura_loca_apareo * est_apareo) {
+	if (est_apareo->fd > 0) {
 		socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
-		if(est_apareo->longitud_linea == 0){
-			est_apareo->linea = NULL;
+		if (est_apareo->longitud_linea == 0) {
+			int recibido = 1;
+			socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
 			close_socket(est_apareo->fd);
+			est_apareo->fd = -1;
 		}else {
-			est_apareo->linea = malloc(est_apareo->longitud_linea + 1);
-			socket_recv(&(est_apareo->fd), est_apareo->linea, est_apareo->longitud_linea);
-			est_apareo->linea[est_apareo->longitud_linea] = '\0';
+			est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
+			socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+			est_apareo->linea[(est_apareo->longitud_linea)] = '\0';
 			log_trace(logger, "Linea recibida: %s de Auxiliar fd: %d.", est_apareo->linea, est_apareo->fd);
 		}
-	} else {
-
 	}
 }
 
-t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global){
-	t_estructura_loca_apareo *apareo = malloc(sizeof(t_estructura_loca_apareo));
-
-	ip_port_combo* combo= split_ipport(red_global->ip_puerto);
+//
+// TODO : El proceso debe finalizar si no se pudo conectar al nodo
+//
+t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global){
+	t_estructura_loca_apareo * apareo = malloc(sizeof(t_estructura_loca_apareo));
+	ip_port_combo * combo= split_ipport(red_global->ip_puerto);
 	apareo->fd = connect_to_socket(combo->ip, combo->port);
 	int resultado_enviado = local_reduction_file_req_send(apareo->fd, red_global->archivo_rl_temp);
-	if(resultado_enviado == -1)log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
+	if(resultado_enviado == -1)
+		log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
 	liberar_combo_ip(combo);
 	return apareo;
 }
@@ -465,58 +490,98 @@ int es_designado(t_red_global *nodo){
 	return nodo->designado;
 }
 
-t_red_global* merge_global(t_list *lista_reduc_global){
-	t_red_global *nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
-	t_list *lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
-	log_trace(logger, "cantidad de auxiliares: %d", list_size(lista));
-	FILE *resultado_apareo_global, *temporal_reduccion_local;
-	char *ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
-	resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
-	char *ruta_reduccion_local = string_from_format("%s%s", PATH, nodo_designado->archivo_rl_temp);
-	log_trace(logger, "%s RUTA REDUCCION LOCAL", ruta_reduccion_local);
-	temporal_reduccion_local = fopen(ruta_reduccion_local, "r");
-	char *buffer, *linea_archivo_propio = NULL;
-	size_t size = 0;
-	getline(&linea_archivo_propio, &size, temporal_reduccion_local);
+t_red_global* merge_global(t_list * lista_reduc_global){
 
-	t_estructura_loca_apareo *estructura_apareo_auxiliar = malloc(sizeof(t_estructura_loca_apareo));
-	estructura_apareo_auxiliar->linea = NULL;
-	int i;
+	t_red_global * nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
+	t_list * lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
+
+	char * ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
+	char * ruta_rl_nodo_designado = string_from_format("%s%s", PATH, nodo_designado->archivo_rl_temp);
+
+	FILE * resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
+	FILE * temporal_reduccion_local = fopen(ruta_rl_nodo_designado, "r");
+
+	char * buffer;
+	char * linea_asignado = NULL;
+	size_t size = 0;
+
 	list_iterate(lista, leer_linea);
-	while(quedan_datos_por_leer(lista)){
-		for(i = 0; i != list_size(lista); i++){
-			t_estructura_loca_apareo *apareo = list_get(lista, i);
-			if(estructura_apareo_auxiliar->linea == NULL || ((apareo->linea != NULL) && strcmp(apareo->linea, estructura_apareo_auxiliar->linea)<0)){
-				estructura_apareo_auxiliar = apareo;
-			}else{
-				// Se deja el apareo auxiliar como esta
+
+	t_estructura_loca_apareo * apareo;
+	t_estructura_loca_apareo * aux = NULL;
+	bool termine_leer_rl_asignado = false;
+
+	int i;
+	while (quedan_datos_por_leer(lista)) {
+
+		for (i = 0; i < list_size(lista); i++) {
+			apareo = list_get(lista, i);
+			if ((apareo->longitud_linea > 0) && (aux == NULL || (strcmp(apareo->linea, aux->linea) < 0))) {
+				aux = apareo;
 			}
 		}
-		if(linea_archivo_propio != NULL && strcmp(linea_archivo_propio, estructura_apareo_auxiliar->linea) < 0 ){
-			fwrite(linea_archivo_propio, sizeof(char), strlen(linea_archivo_propio), resultado_apareo_global);
-			if(getline(&linea_archivo_propio, &size, temporal_reduccion_local) == -1){
-				free(linea_archivo_propio);
-				linea_archivo_propio = NULL;
-				fclose(temporal_reduccion_local);
 
+		if (linea_asignado == NULL && !termine_leer_rl_asignado) {
+			if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
+				termine_leer_rl_asignado = true;
+				linea_asignado = NULL;
+				fclose(temporal_reduccion_local);
 			}
-		}else{
-			buffer = string_duplicate(estructura_apareo_auxiliar->linea);
+		}
+
+		if (linea_asignado != NULL && strcmp(linea_asignado, aux->linea) < 0) {
+
+			fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
+			free(linea_asignado);
+			linea_asignado = NULL;
+
+		} else {
+			buffer = string_duplicate(aux->linea);
 			fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
-			free(estructura_apareo_auxiliar->linea);
+			free(aux->linea);
 			free(buffer);
-			leer_linea(estructura_apareo_auxiliar);
+			leer_linea(aux);
+
+		}
+
+		aux = NULL;
+
+	}
+
+	if (linea_asignado != NULL) {
+		fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
+		free(linea_asignado);
+		linea_asignado = NULL;
+	}
+
+	if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
+		termine_leer_rl_asignado = true;
+		linea_asignado = NULL;
+		fclose(temporal_reduccion_local);
+	}
+
+	while (!termine_leer_rl_asignado) {
+		fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
+		free(linea_asignado);
+		linea_asignado = NULL;
+		if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
+			termine_leer_rl_asignado = true;
+			linea_asignado = NULL;
+			fclose(temporal_reduccion_local);
 		}
 	}
+
 	char s = '\0';
 	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
+	free(ruta_reduccion_global);
+	free(ruta_rl_nodo_designado);
 	return nodo_designado;
 }
 
 bool quedan_datos_por_leer(t_list *lista){
-	int linea_no_nula(t_estructura_loca_apareo *estructura){
-		return estructura->linea != NULL;
+	int linea_no_nula(t_estructura_loca_apareo * estructura){
+		return estructura->longitud_linea > 0;
 	}
 	return list_any_satisfy(lista, linea_no_nula);
 }
@@ -565,33 +630,27 @@ void gen_random(char *s, const int len) {
 }
 
 void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
-	log_trace(logger, "Mandando archivo temporal: \n file_descriptor: %d\n nombre_temporal_local: %s", fd, nombre_archivo);
-	char *ruta_archivo = string_from_format("%s%s", PATH, nombre_archivo);
-	log_trace(logger,"%s RUTA DE ARCHIVO REDUCCION LOCAL", ruta_archivo);
-	FILE *f = fopen(ruta_archivo, "r");
-	fseek(f, 0L, SEEK_END);
-	unsigned long len = ftell(f);
-	fseek(f, 0L, SEEK_SET);
-	char *linea = NULL, *buffer;
+
+	char * ruta_archivo = string_from_format("%s%s", PATH, nombre_archivo);
+	FILE * f = fopen(ruta_archivo, "r");
+
+	int largo_linea;
+	char * linea = NULL;
+
+	void * buffer;
 	size_t size = 0;
-	buffer = malloc(len);
-	int offset = 0;
 	while((getline(&linea, &size, f) != -1)){
-		int len_linea = strlen(linea);
-		buffer = realloc(buffer, len + sizeof(int));
-		len += sizeof(int);
-		memcpy(buffer + offset, &len_linea, sizeof(int));
-		offset += sizeof(int);
-		memcpy(buffer + offset, linea, len_linea);
-		offset += len_linea;
+		largo_linea = strlen(linea);
+		buffer = malloc(sizeof(int) + largo_linea);
+		memcpy(buffer, &largo_linea, sizeof(int));
+		memcpy(buffer + sizeof(int), linea, largo_linea);
+		socket_send(&fd, buffer, sizeof(int) + largo_linea, 0);
+		free(buffer);
 	}
-	char fin = '\0';
-	int aa = 0;
-//	memcpy(buffer + offset, &fin, sizeof(char));
-//	offset += sizeof(int);
 
-	buffer = realloc(buffer, len + sizeof(int));
-
-	memcpy(buffer + offset, &aa, sizeof(int));
-	int enviado = socket_send(&fd, buffer, len + sizeof(int), 0);
+	int fin = 0;
+	socket_send(&fd, &fin, sizeof(int), 0);
+	int rec;
+	socket_recv(&fd, &rec, sizeof(int));
+	fclose(f);
 }
