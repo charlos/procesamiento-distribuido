@@ -438,11 +438,12 @@ void leer_linea(t_estructura_loca_apareo *est_apareo){
 		socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
 		if(est_apareo->longitud_linea == 0){
 			est_apareo->linea = NULL;
+			close_socket(est_apareo->fd);
 		}else {
 			est_apareo->linea = malloc(est_apareo->longitud_linea + 1);
 			socket_recv(&(est_apareo->fd), est_apareo->linea, est_apareo->longitud_linea);
 			est_apareo->linea[est_apareo->longitud_linea] = '\0';
-			//log_trace(logger, "auxiliar fd: %d. Linea recibida: %s", est_apareo->fd, est_apareo->linea);
+			log_trace(logger, "Linea recibida: %s de Auxiliar fd: %d.", est_apareo->linea, est_apareo->fd);
 		}
 	} else {
 
@@ -496,6 +497,8 @@ t_red_global* merge_global(t_list *lista_reduc_global){
 			if(getline(&linea_archivo_propio, &size, temporal_reduccion_local) == -1){
 				free(linea_archivo_propio);
 				linea_archivo_propio = NULL;
+				fclose(temporal_reduccion_local);
+
 			}
 		}else{
 			buffer = string_duplicate(estructura_apareo_auxiliar->linea);
