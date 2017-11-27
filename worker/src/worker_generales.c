@@ -467,7 +467,6 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 			est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
 			socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
 			est_apareo->linea[(est_apareo->longitud_linea)] = '\0';
-			log_trace(logger, "Linea recibida: %s de Auxiliar fd: %d.", est_apareo->linea, est_apareo->fd);
 		}
 	}
 }
@@ -640,7 +639,7 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 	void * buffer;
 	size_t size = 0;
 	while((getline(&linea, &size, f) != -1)){
-		largo_linea = strlen(linea);
+		largo_linea = strlen(linea) + 1;
 		buffer = malloc(sizeof(int) + largo_linea);
 		memcpy(buffer, &largo_linea, sizeof(int));
 		memcpy(buffer + sizeof(int), linea, largo_linea);
@@ -651,6 +650,9 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 	int fin = 0;
 	socket_send(&fd, &fin, sizeof(int), 0);
 	int rec;
-	socket_recv(&fd, &rec, sizeof(int));
+	log_trace(logger, "Esperando a recibir confirmacion de nodo designado");
+	int bytes_recibidos = socket_recv(&fd, &rec, sizeof(int));
+
+	log_trace(logger, "Termino el auxiliar");
 	fclose(f);
 }

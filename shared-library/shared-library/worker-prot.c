@@ -461,7 +461,7 @@ int local_reduction_file_req_send(int file_descriptor, char *local_reduction_fil
 	offset += prot_filename_len;
 	memcpy(buffer + offset, local_reduction_filename, filename_length);
 
-	int enviado = socket_send(&file_descriptor, buffer, &buffer_size, 0);
+	int enviado = socket_send(&file_descriptor, buffer, buffer_size, 0);
 	if(enviado < buffer_size)return -1;
 	return 1;
 }
