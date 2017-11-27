@@ -441,7 +441,15 @@ void send_recv_status(int master_socket, int16_t status) {
 	memcpy(response, &status, response_size);
 
 	//printf("enviando resultado de la recepcion = %d\n",status);
-	socket_send(&master_socket, response, response_size, 0);
+	socket_send(&master_socket, response, response_size, MSG_NOSIGNAL);
+	/*if(errno) {
+		case EPIPE:
+			printf("Error - Realizando send a socket desconectado");
+			break;
+		default:
+			printf("Error - No fue EPIPE");
+			break;
+	}*/
 	free(response);
 }
 
