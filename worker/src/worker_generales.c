@@ -456,17 +456,28 @@ void * map_file(char * file_path, size_t* size, int flags) {
 
 
 void leer_linea(t_estructura_loca_apareo * est_apareo) {
-	if (est_apareo->fd > 0) {
-		socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
-		if (est_apareo->longitud_linea == 0) {
-			int recibido = 1;
-			socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
-			close_socket(est_apareo->fd);
-			est_apareo->fd = -1;
-		}else {
-			est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
-			socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
-			est_apareo->linea[(est_apareo->longitud_linea)] = '\0';
+	if(est_apareo->es_designado){
+		size_t size;
+		if (!(est_apareo->termine_leer_rl_asignado) && (getline(&est_apareo->linea, &size, est_apareo->archivo_rl_designado) == -1)) {
+			est_apareo->termine_leer_rl_asignado = true;
+			est_apareo->linea = NULL;
+			est_apareo->longitud_linea = 0;
+			fclose(est_apareo->archivo_rl_designado);
+		} else {
+			est_apareo->longitud_linea = strlen(est_apareo->linea);
+		}
+	} else {
+		if (est_apareo->fd > 0) {
+			socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
+			if (est_apareo->longitud_linea == 0) {
+				int recibido = 1;
+				socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
+				close_socket(est_apareo->fd);
+				est_apareo->fd = -1;
+			}else {
+				est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
+				socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+			}
 		}
 	}
 }
@@ -476,12 +487,20 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 //
 t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global){
 	t_estructura_loca_apareo * apareo = malloc(sizeof(t_estructura_loca_apareo));
-	ip_port_combo * combo= split_ipport(red_global->ip_puerto);
-	apareo->fd = connect_to_socket(combo->ip, combo->port);
-	int resultado_enviado = local_reduction_file_req_send(apareo->fd, red_global->archivo_rl_temp);
-	if(resultado_enviado == -1)
-		log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
-	liberar_combo_ip(combo);
+	if(red_global->designado){
+		char * ruta_rl_nodo_designado = string_from_format("%s%s", PATH, red_global->archivo_rl_temp);
+		apareo->archivo_rl_designado = fopen(ruta_rl_nodo_designado, "r");
+		apareo->linea = NULL;
+		apareo->es_designado = true;
+		apareo->termine_leer_rl_asignado = false;
+	} else {
+		ip_port_combo * combo= split_ipport(red_global->ip_puerto);
+		apareo->fd = connect_to_socket(combo->ip, combo->port);
+		int resultado_enviado = local_reduction_file_req_send(apareo->fd, red_global->archivo_rl_temp);
+		if(resultado_enviado == -1)
+			log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
+		liberar_combo_ip(combo);
+	}
 	return apareo;
 }
 
@@ -495,20 +514,16 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 	t_list * lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
 
 	char * ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
-	char * ruta_rl_nodo_designado = string_from_format("%s%s", PATH, nodo_designado->archivo_rl_temp);
+
 
 	FILE * resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
-	FILE * temporal_reduccion_local = fopen(ruta_rl_nodo_designado, "r");
 
 	char * buffer;
-	char * linea_asignado = NULL;
-	size_t size = 0;
 
 	list_iterate(lista, leer_linea);
 
 	t_estructura_loca_apareo * apareo;
 	t_estructura_loca_apareo * aux = NULL;
-	bool termine_leer_rl_asignado = false;
 
 	int i;
 	while (quedan_datos_por_leer(lista)) {
@@ -520,61 +535,20 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 			}
 		}
 
-		if (linea_asignado == NULL && !termine_leer_rl_asignado) {
-			if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
-				termine_leer_rl_asignado = true;
-				linea_asignado = NULL;
-				fclose(temporal_reduccion_local);
-			}
-		}
-
-		if (linea_asignado != NULL && strcmp(linea_asignado, aux->linea) < 0) {
-
-			fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
-			free(linea_asignado);
-			linea_asignado = NULL;
-
-		} else {
-			buffer = string_duplicate(aux->linea);
-			fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
-			free(aux->linea);
-			free(buffer);
-			leer_linea(aux);
-
-		}
+		buffer = string_duplicate(aux->linea);
+		fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
+		free(aux->linea);
+		free(buffer);
+		leer_linea(aux);
 
 		aux = NULL;
 
-	}
-
-	if (linea_asignado != NULL) {
-		fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
-		free(linea_asignado);
-		linea_asignado = NULL;
-	}
-
-	if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
-		termine_leer_rl_asignado = true;
-		linea_asignado = NULL;
-		fclose(temporal_reduccion_local);
-	}
-
-	while (!termine_leer_rl_asignado) {
-		fwrite(linea_asignado, sizeof(char), strlen(linea_asignado), resultado_apareo_global);
-		free(linea_asignado);
-		linea_asignado = NULL;
-		if (getline(&linea_asignado, &size, temporal_reduccion_local) == -1) {
-			termine_leer_rl_asignado = true;
-			linea_asignado = NULL;
-			fclose(temporal_reduccion_local);
-		}
 	}
 
 	char s = '\0';
 	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
 	free(ruta_reduccion_global);
-	free(ruta_rl_nodo_designado);
 	return nodo_designado;
 }
 

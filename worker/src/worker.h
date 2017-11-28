@@ -50,6 +50,9 @@ typedef struct {
 	int fd;
 	int longitud_linea;
 	char *linea;
+	bool es_designado;
+	FILE * archivo_rl_designado;
+	bool termine_leer_rl_asignado;
 } t_estructura_loca_apareo;
 
 typedef struct {
