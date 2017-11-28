@@ -459,9 +459,9 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 	if(est_apareo->es_designado){
 		size_t size;
 		if (!(est_apareo->termine_leer_rl_asignado)) {
+			est_apareo->linea = NULL;
 			if (getline(&est_apareo->linea, &size, est_apareo->archivo_rl_designado) == -1) {
 				est_apareo->termine_leer_rl_asignado = true;
-				est_apareo->linea = NULL;
 				est_apareo->longitud_linea = 0;
 				fclose(est_apareo->archivo_rl_designado);
 			} else {
@@ -470,15 +470,20 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 		}
 	} else {
 		if (est_apareo->fd > 0) {
-			socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
-			if (est_apareo->longitud_linea == 0) {
-				int recibido = 1;
-				socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
-				close_socket(est_apareo->fd);
+			int recibidos = socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
+			if (recibidos > 0) {
+				if (est_apareo->longitud_linea == 0) {
+					int recibido = 1;
+					socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
+					close_socket(est_apareo->fd);
+					est_apareo->fd = -1;
+				}else {
+					est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
+					socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+				}
+			} else {
 				est_apareo->fd = -1;
-			}else {
-				est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
-				socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+				est_apareo->longitud_linea = 0;
 			}
 		}
 	}
