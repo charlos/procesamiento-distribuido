@@ -499,6 +499,8 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 		int resultado_enviado = local_reduction_file_req_send(apareo->fd, red_global->archivo_rl_temp);
 		if(resultado_enviado == -1)
 			log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
+		apareo->es_designado = false;
+		apareo->termine_leer_rl_asignado = true;
 		liberar_combo_ip(combo);
 	}
 	return apareo;
