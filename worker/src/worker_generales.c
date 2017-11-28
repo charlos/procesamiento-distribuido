@@ -458,13 +458,15 @@ void * map_file(char * file_path, size_t* size, int flags) {
 void leer_linea(t_estructura_loca_apareo * est_apareo) {
 	if(est_apareo->es_designado){
 		size_t size;
-		if (!(est_apareo->termine_leer_rl_asignado) && (getline(&est_apareo->linea, &size, est_apareo->archivo_rl_designado) == -1)) {
-			est_apareo->termine_leer_rl_asignado = true;
-			est_apareo->linea = NULL;
-			est_apareo->longitud_linea = 0;
-			fclose(est_apareo->archivo_rl_designado);
-		} else {
-			est_apareo->longitud_linea = strlen(est_apareo->linea);
+		if (!(est_apareo->termine_leer_rl_asignado)) {
+			if (getline(&est_apareo->linea, &size, est_apareo->archivo_rl_designado) == -1) {
+				est_apareo->termine_leer_rl_asignado = true;
+				est_apareo->linea = NULL;
+				est_apareo->longitud_linea = 0;
+				fclose(est_apareo->archivo_rl_designado);
+			} else {
+				est_apareo->longitud_linea = strlen(est_apareo->linea);
+			}
 		}
 	} else {
 		if (est_apareo->fd > 0) {
