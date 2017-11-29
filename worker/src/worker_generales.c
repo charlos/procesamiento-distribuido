@@ -11,7 +11,7 @@ extern t_worker_conf* worker_conf;
 //extern FILE *fptr;
 extern t_log* logger;
 extern void * data_bin_mf_ptr;
-
+FILE *r_local;
 void load_properties(char * pathcfg) {
 	t_config * conf = config_create(pathcfg);
 	worker_conf = malloc(sizeof(t_worker_conf));
@@ -459,31 +459,29 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 	if(est_apareo->es_designado){
 		size_t size;
 		if (!(est_apareo->termine_leer_rl_asignado)) {
-			est_apareo->linea = NULL;
 			if (getline(&est_apareo->linea, &size, est_apareo->archivo_rl_designado) == -1) {
 				est_apareo->termine_leer_rl_asignado = true;
+				free(est_apareo->linea);
+				est_apareo->linea = NULL;
 				est_apareo->longitud_linea = 0;
 				fclose(est_apareo->archivo_rl_designado);
 			} else {
 				est_apareo->longitud_linea = strlen(est_apareo->linea);
+				fwrite(est_apareo->linea, sizeof(char), est_apareo->longitud_linea, r_local);
 			}
 		}
 	} else {
 		if (est_apareo->fd > 0) {
-			int recibidos = socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
-			if (recibidos > 0) {
-				if (est_apareo->longitud_linea == 0) {
-					int recibido = 1;
-					socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
-					close_socket(est_apareo->fd);
-					est_apareo->fd = -1;
-				}else {
-					est_apareo->linea = malloc((est_apareo->longitud_linea) + 1);
-					socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
-				}
-			} else {
+			int recibido = socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
+			if (est_apareo->longitud_linea == 0) {
+				int recibido = 1;
+				socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
+				close_socket(est_apareo->fd);
+				free(est_apareo->linea);
 				est_apareo->fd = -1;
-				est_apareo->longitud_linea = 0;
+			}else {
+				est_apareo->linea = realloc(est_apareo->linea, est_apareo->longitud_linea);
+				socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
 			}
 		}
 	}
@@ -508,6 +506,7 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 			log_error(logger, "Hubo un problema al enviar nombre de archivo reduccion local a worker auxiliar. socket: %d", apareo->fd);
 		apareo->es_designado = false;
 		apareo->termine_leer_rl_asignado = true;
+		apareo->linea = string_new();
 		liberar_combo_ip(combo);
 	}
 	return apareo;
@@ -519,11 +518,11 @@ int es_designado(t_red_global *nodo){
 
 t_red_global* merge_global(t_list * lista_reduc_global){
 
-	t_red_global * nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 	t_list * lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
+	r_local = fopen(string_duplicate("Probando_designado"), "w+");
+	t_red_global * nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 
 	char * ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
-
 
 	FILE * resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
 
@@ -546,7 +545,6 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 
 		buffer = string_duplicate(aux->linea);
 		fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
-		free(aux->linea);
 		free(buffer);
 		leer_linea(aux);
 
@@ -610,6 +608,7 @@ void gen_random(char *s, const int len) {
     }
     s[len] = 0;
 }
+
 
 void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 

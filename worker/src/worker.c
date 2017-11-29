@@ -106,12 +106,15 @@ int main(int argc, char * argv[]) {
 
 			  int child_status = processRequest(task_code, buffer);
 			  //child_status = SUCCESS;
-			  int resp_status = task_response_send(new_socket,task_code, child_status, logger);
+			  int resp_status;
+			  if(task_code != REDUCE_GLOBAL_OC_N){
+				  resp_status = task_response_send(new_socket,task_code, child_status, logger);
 
-			  if(resp_status==SUCCESS){
-				  log_trace(logger, "WORKER - El resultado de la etapa fue enviado a Master correctamente");
-			  }else{
-				 // log_error(logger,"WORKER - Error al enviar resultado de la etapa %d a Master: %d",task_code, new_socket);
+				  if(resp_status==SUCCESS){
+					  log_trace(logger, "WORKER - El resultado de la etapa fue enviado a Master correctamente");
+				  }else{
+					 // log_error(logger,"WORKER - Error al enviar resultado de la etapa %d a Master: %d",task_code, new_socket);
+				  }
 			  }
 
 			  // En la ejecución del hijo libero el buffer recibido cuando se termino de utilizar
