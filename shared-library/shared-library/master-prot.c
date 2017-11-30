@@ -96,6 +96,17 @@ ip_port_combo * split_ipport(char *ipport) {
 	combo->ip = ip_port[0];
 	combo->port = ip_port[1];
 
+	//testeando free
+	//free(ip_port[0]);
+	//free(ip_port[1]);
+	//free(ip_port);
+	int i;
+
+	for ( i = 0; ip_port[i]; i++ )
+		free( ip_port[i] );
+
+	free( ip_port );
+
 	return combo;
 }
 

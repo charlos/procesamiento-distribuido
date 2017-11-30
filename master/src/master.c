@@ -12,6 +12,7 @@
 #include <fcntl.h>
 pedido_master * pedido;
 int job_id;
+
 int main(int argc, char ** argv) {
 
 	if (argc != 5) {
@@ -19,6 +20,8 @@ int main(int argc, char ** argv) {
 				"ERROR: Cantidad de parametros invalida. Deben ser 4: transformador/ruta \nreductor/ruta \nArchivo de origen/ruta \narchivo resultado/ruta");
 		exit(0);
 	}
+	signal(SIGPIPE, SIG_IGN);
+
 	crear_logger(argv[0], &logger, true, LOG_LEVEL_TRACE);
 	struct timeval tiempo_inicio, tiempo_finalizacion;
 	inicializar_estadisticas();
@@ -69,6 +72,7 @@ master_cfg * crear_config() {
 	master_cfg * mcfg = malloc(sizeof(master_cfg));
 	mcfg->ip_yama = config_get_string_value(conf, "IP_YAMA");
 	mcfg->port_yama = config_get_string_value(conf, "PORT_YAMA");
+	config_destroy(conf);
 
 	return mcfg;
 }
@@ -104,9 +108,15 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
 				result = NODO_DESCONECTADO;
+				//testeando free
+				log_trace(logger, "Liberando response_task de transformacion");
+				free(response_task);
 				//result = TRANSF_ERROR;
 			} else {
 				result = traducir_respuesta(response_task->result_code, TRANSFORMACION);
+				//testeando free
+				log_trace(logger, "Liberando response_task de transformacion");
+				free(response_task);
 			}
 		} else {
 			result = NODO_DESCONECTADO;
@@ -124,6 +134,7 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 //	status = yama_transform_res_send(&yama_socket, resultado);
 	liberar_respuesta_transformacion(respuesta);
 	liberar_combo_ip(combo);
+	close(socket_worker);
 
 	log_trace(logger, "Job: %d - Termina hilo para transformacion", job_id);
 	gettimeofday(&tiempo_fin, NULL);
@@ -138,6 +149,11 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	ip_port_combo * combo = split_ipport(respuesta->ip_puerto);
 	t_estadisticas * est_reduccion_local = metricas->metricas_reduccion_local;
 	struct_file *script_reduccion = read_file(pedido->ruta_reduc);
+
+	//aux_sim->cant_reduc_local_simultaneo++;
+	//if(aux_sim->cant_reduc_local_simultaneo > est_reduccion_local->cant_max_tareas_simultaneas) {
+	//	est_reduccion_local->cant_max_tareas_simultaneas = aux_sim->cant_reduc_local_simultaneo;
+	//}
 
 	gettimeofday(&tiempo_inicio, NULL);
 
@@ -155,8 +171,14 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
 				result = REDUC_LOCAL_ERROR;
+				//testeando free
+				log_trace(logger, "Liberando response_task de reduccion local");
+				free(response_task);
 			} else {
 				result = traducir_respuesta(response_task->result_code, REDUCCION_LOCAL);
+				//testeando free
+				log_trace(logger, "Liberando response_task de reduccion local");
+				free(response_task);
 			}
 		} else {
 			result = REDUC_LOCAL_ERROR;
@@ -174,9 +196,11 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 	closure_rl(respuesta);
 	liberar_combo_ip(combo);
 
-
 	unmap_file(script_reduccion->file, script_reduccion->filesize);
+	close(socket_worker);
 	free(script_reduccion);
+
+	//aux_sim->cant_reduc_local_simultaneo--;
 
 	log_trace(logger, "Job: %d - Termino hilo para reduccion local", job_id);
 	gettimeofday(&tiempo_fin, NULL);
@@ -223,8 +247,14 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 
 			if(response_task->exec_code == DISCONNECTED_CLIENT) {
 				result = REDUC_GLOBAL_ERROR;
+				//testeando free
+				log_trace(logger, "Liberando response_task de reduccion global");
+				free(response_task);
 			} else {
 				result = traducir_respuesta(response_task->result_code, REDUCCION_GLOBAL);
+				//testeando free
+				log_trace(logger, "Liberando response_task de reduccion global");
+				free(response_task);
 			}
 			// Enviar notificacion a YAMA
 			free(response_task);
@@ -284,6 +314,7 @@ void atender_respuesta_almacenamiento(t_yama_planificacion_resp * solicitud) {
 	// guardar
 	yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
 	liberar_combo_ip(ip_port_combo);
+	close(nodo_enc_socket);
 }
 
 struct_file * read_file(char * path) {
@@ -321,7 +352,7 @@ t_estadisticas * inicializar_struct_estadisticas(int etapa) {
 	nueva_estadistica->cant_max_tareas_simultaneas = 0;
 	nueva_estadistica->cant_total_tareas = 0;
 	nueva_estadistica->cant_fallos_job = 0;
-	nueva_estadistica->tiempo_ejecucion_hilos = list_create();
+	//nueva_estadistica->tiempo_ejecucion_hilos = list_create();
 	nueva_estadistica->reg_promedio = 0;
 
 	return nueva_estadistica;
@@ -333,6 +364,9 @@ void inicializar_estadisticas() {
 	metricas->metricas_transformacion = inicializar_struct_estadisticas(TRANSFORMACION);
 	metricas->metricas_reduccion_local = inicializar_struct_estadisticas(REDUCCION_LOCAL);
 	metricas->metricas_reduccion_global = inicializar_struct_estadisticas(REDUCCION_GLOBAL);
+
+	//aux_sim->cant_reduc_local_simultaneo = 0;
+	//aux_sim->cant_transf_simultaneo = 0;
 }
 int calcular_promedio(t_list * lista_promedios) {
 	int i, total, cant;
@@ -437,8 +471,14 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 
 				if(response->exec_code == DISCONNECTED_CLIENT) {
 					result = ALMACENAMIENTO_ERROR;
+					//testeando free
+					log_trace(logger, "Liberando response_task de almacenamiento");
+					free(response);
 				} else {
 					result = traducir_respuesta(response->result_code, ALMACENAMIENTO);
+					//testeando free
+					log_trace(logger, "Liberando response_task de almacenamiento");
+					free(response);
 				}
 			}
 			else {
@@ -452,6 +492,7 @@ void atender_solicitud(t_yama_planificacion_resp *solicitud){
 		// guardar
 		yama_registrar_resultado(yama_socket, job_id, almacenamiento->nodo, RESP_ALMACENAMIENTO, result, logger);
 		liberar_combo_ip(ip_port_combo);
+		close(nodo_enc_socket);
 
 		// TODO Terminar de liberar estructuras
 		break;
@@ -545,4 +586,6 @@ void imprimir_estadisticas(){
 
 	printf("Cantidad total de tareas realizadas: %d\n", est_reduccion_global->cant_total_tareas);
 	printf("Cantidad de fallos en la etapa: %d\n", est_reduccion_global->cant_fallos_job);
+
+	//est_transformacion->tiempo_ejecucion_hilos
 }
