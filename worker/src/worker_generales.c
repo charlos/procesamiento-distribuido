@@ -240,17 +240,22 @@ int processRequest(uint8_t task_code, void* pedido){
 			case REDUCE_GLOBAL_OC:{
 
 				t_request_global_reduction * request = (t_request_global_reduction *) pedido;
-				t_red_global * nodo_designado = merge_global(request->lista_nodos_reduccion_global);
+				int resultado_merge_global = merge_global(request->lista_nodos_reduccion_global);
+				if(resultado_merge_global == -1){
+					result = ERROR;
+				} else {
 
+					t_red_global * nodo_designado = list_remove_by_condition(request->lista_nodos_reduccion_global, es_designado);
 
-				char *tiempo = temporal_get_string_time_bis();
-				string_append(&script_filename,PATH);
-				string_append(&script_filename,"script_reducglobal_");
-				string_append(&script_filename,tiempo);
-				//string_append(&script_filename,".pl");
-				free(tiempo);
-				//Creo el archivo y guardo el script a ejecutar
-				create_script_file(script_filename, request->script_size, request->script );
+					char *tiempo = temporal_get_string_time_bis();
+					string_append(&script_filename,PATH);
+					string_append(&script_filename,"script_reducglobal_");
+					string_append(&script_filename,tiempo);
+					//string_append(&script_filename,".pl");
+					free(tiempo);
+					//Creo el archivo y guardo el script a ejecutar
+					create_script_file(script_filename, request->script_size, request->script );
+
 
 				 log_trace(logger, "WORKER - merge realizado");
 				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
@@ -265,22 +270,23 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&instruccion, nodo_designado->archivo_rg);
 				//string_append(&instruccion, "'");
 
-				log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
-				status = system(instruccion);
+					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
+					status = system(instruccion);
 
-				if (!status){
-					result = SUCCESS;
-				}else {
-					result= ERROR;
+					if (!status){
+						result = SUCCESS;
+					}else {
+						result= ERROR;
+					}
+					log_trace(logger, "WORKER - Reducción global finalizada (Status %d)", result);
+
+					//elimino archivos temporales creados
+					   if(remove(script_filename) != 0) {
+						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
+					   }
+					   free(script_filename);
+					   free(instruccion);
 				}
-				log_trace(logger, "WORKER - Reducción global finalizada (Status %d)", result);
-
-				//elimino archivos temporales creados
-				   if(remove(script_filename) != 0) {
-					   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
-				   }
-				   free(script_filename);
-				   free(instruccion);
 
 				break;
 			}
@@ -495,6 +501,7 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 		apareo->linea = NULL;
 		apareo->es_designado = true;
 		apareo->termine_leer_rl_asignado = false;
+		apareo->fd = 1;
 	} else {
 		ip_port_combo * combo= split_ipport(red_global->ip_puerto);
 		apareo->fd = connect_to_socket(combo->ip, combo->port);
@@ -513,7 +520,9 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 int es_designado(t_red_global *nodo){
 	return nodo->designado;
 }
-
+int murio_nodo(t_estructura_loca_apareo* apareo){
+	return apareo->fd == -1;
+}
 t_red_global* merge_global(t_list * lista_reduc_global){
 
 	t_list * lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
@@ -521,6 +530,10 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 	t_red_global * nodo_designado = list_remove_by_condition(lista_reduc_global, es_designado);
 
 	char * ruta_reduccion_global = string_from_format("%s%s%s", PATH, nodo_designado->archivo_rg, "_temp");
+
+	list_add(lista_reduc_global, nodo_designado);
+
+	if(list_any_satisfy(lista, murio_nodo))return -1;
 
 	FILE * resultado_apareo_global = fopen(ruta_reduccion_global, "w+");
 
