@@ -478,10 +478,12 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 				socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
 				close_socket(est_apareo->fd);
 				free(est_apareo->linea);
+				fclose(est_apareo->archivo_rl_designado);
 				est_apareo->fd = -1;
 			}else {
 				est_apareo->linea = realloc(est_apareo->linea, est_apareo->longitud_linea);
 				socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+				fwrite(est_apareo->linea, sizeof(char), strlen(est_apareo->linea), est_apareo->archivo_rl_designado);
 			}
 		}
 	}
@@ -507,6 +509,7 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 		apareo->es_designado = false;
 		apareo->termine_leer_rl_asignado = true;
 		apareo->linea = string_new();
+		apareo->archivo_rl_designado = fopen(string_from_format("reduccion_local_nodo_auxiliar%d", apareo->fd), "w+");
 		liberar_combo_ip(combo);
 	}
 	return apareo;
@@ -617,7 +620,7 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 
 	int largo_linea;
 	char * linea = NULL;
-
+	socket_recv(&fd, largo_linea, sizeof(int));
 	void * buffer;
 	size_t size = 0;
 	while((getline(&linea, &size, f) != -1)){
