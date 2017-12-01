@@ -72,12 +72,12 @@ typedef struct {
 	t_estadisticas * metricas_reduccion_local;
 	t_estadisticas * metricas_reduccion_global;
 } t_metricas;
-/*
+
 typedef struct {
 	uint8_t cant_transf_simultaneo;
 	uint8_t cant_reduc_local_simultaneo;
-} aux_procesos_simultaneos;*/
-//aux_procesos_simultaneos * aux_sim;
+} aux_procesos_simultaneos;
+aux_procesos_simultaneos * aux_sim;
 
 t_metricas * metricas;
 
@@ -101,5 +101,6 @@ void crear_hilo_reduccion_local(t_red_local *reduccion);
 int calcular_promedio(t_list * lista_tiempo_ejecucion);
 int traducir_respuesta(int respuesta, int etapa);
 void imprimir_estadisticas();
+void liberar_estructuras();
 
 #endif /* MASTER_H_ */
