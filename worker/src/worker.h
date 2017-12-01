@@ -48,6 +48,7 @@ typedef struct {
 
 typedef struct {
 	int fd;
+	char *nodo;
 	int longitud_linea;
 	char *linea;
 	bool es_designado;
@@ -75,7 +76,7 @@ struct_file * read_file(char * path);
 bool quedan_datos_por_leer(t_list *lista);
 void leer_linea(t_estructura_loca_apareo *est_apareo);
 t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
-t_red_global* merge_global(t_list *lista_reduc_global);
+int merge_global(t_list *lista_reduc_global);
 bool quedan_datos_por_leer(t_list *lista);
 void free_nodo(t_red_global* nodo);
 void gen_random(char *s, const int len);

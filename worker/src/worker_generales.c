@@ -245,6 +245,7 @@ int processRequest(uint8_t task_code, void* pedido){
 					result = ERROR;
 				} else {
 
+
 					t_red_global * nodo_designado = list_remove_by_condition(request->lista_nodos_reduccion_global, es_designado);
 
 					char *tiempo = temporal_get_string_time_bis();
@@ -257,18 +258,18 @@ int processRequest(uint8_t task_code, void* pedido){
 					create_script_file(script_filename, request->script_size, request->script );
 
 
-				 log_trace(logger, "WORKER - merge realizado");
-				//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
-				string_append(&instruccion, "export PATH=$PATH:$(pwd) | ");
-				string_append(&instruccion, "cat ");
-				string_append(&instruccion, PATH);
-				string_append(&instruccion, nodo_designado->archivo_rg);
-				string_append(&instruccion, "_temp | ");
-				string_append(&instruccion, script_filename);
-				string_append(&instruccion, " > ");
-				string_append(&instruccion, PATH);
-				string_append(&instruccion, nodo_designado->archivo_rg);
-				//string_append(&instruccion, "'");
+					log_trace(logger, "WORKER - merge realizado");
+					//compongo instrucción a ejecutar: cat para mostrar por salida standard el archivo a reducir + script de reducción + ordenar + guardar en archivo temp
+					string_append(&instruccion, "export PATH=$PATH:$(pwd) | ");
+					string_append(&instruccion, "cat ");
+					string_append(&instruccion, PATH);
+					string_append(&instruccion, nodo_designado->archivo_rg);
+					string_append(&instruccion, "_temp | ");
+					string_append(&instruccion, script_filename);
+					string_append(&instruccion, " > ");
+					string_append(&instruccion, PATH);
+					string_append(&instruccion, nodo_designado->archivo_rg);
+					//string_append(&instruccion, "'");
 
 					log_trace(logger, "WORKER - Ejecutar: %s", instruccion);
 					status = system(instruccion);
@@ -284,10 +285,10 @@ int processRequest(uint8_t task_code, void* pedido){
 					   if(remove(script_filename) != 0) {
 						   log_error(logger, "WORKER - Error al intentar eliminar el archivo %s", script_filename);
 					   }
-					   free(script_filename);
-					   free(instruccion);
 				}
-
+				list_destroy_and_destroy_elements(request->lista_nodos_reduccion_global, closure_rg);
+				free(instruccion);
+				free(script_filename);
 				break;
 			}
 			case STORAGE_OC:{
@@ -474,17 +475,22 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 	} else {
 		if (est_apareo->fd > 0) {
 			int recibido = socket_recv(&(est_apareo->fd), &(est_apareo->longitud_linea), sizeof(int));
-			if (est_apareo->longitud_linea == 0) {
-				int recibido = 1;
-				socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
-				close_socket(est_apareo->fd);
-				free(est_apareo->linea);
-				fclose(est_apareo->archivo_rl_designado);
+			if(recibido <= 0) {
+				log_error(logger, "Se desconecto %s", est_apareo->nodo);
 				est_apareo->fd = -1;
-			}else {
-				est_apareo->linea = realloc(est_apareo->linea, est_apareo->longitud_linea);
-				socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
-				fwrite(est_apareo->linea, sizeof(char), strlen(est_apareo->linea), est_apareo->archivo_rl_designado);
+			} else {
+				if (est_apareo->longitud_linea == 0) {
+					int recibido = 1;
+					socket_send(&(est_apareo->fd), &recibido, sizeof(int), 0);
+					close_socket(est_apareo->fd);
+					free(est_apareo->linea);
+					fclose(est_apareo->archivo_rl_designado);
+					est_apareo->fd = -1;
+				}else {
+					est_apareo->linea = realloc(est_apareo->linea, est_apareo->longitud_linea);
+					socket_recv(&(est_apareo->fd), est_apareo->linea, (est_apareo->longitud_linea));
+					fwrite(est_apareo->linea, sizeof(char), strlen(est_apareo->linea), est_apareo->archivo_rl_designado);
+				}
 			}
 		}
 	}
@@ -514,6 +520,7 @@ t_estructura_loca_apareo * convertir_a_estructura_loca(t_red_global *red_global)
 		apareo->archivo_rl_designado = fopen(string_from_format("reduccion_local_nodo_auxiliar%d", apareo->fd), "w+");
 		liberar_combo_ip(combo);
 	}
+	apareo->nodo = red_global->nodo;
 	return apareo;
 }
 
@@ -523,7 +530,7 @@ int es_designado(t_red_global *nodo){
 int murio_nodo(t_estructura_loca_apareo* apareo){
 	return apareo->fd == -1;
 }
-t_red_global* merge_global(t_list * lista_reduc_global){
+int merge_global(t_list * lista_reduc_global){
 
 	t_list * lista = list_map(lista_reduc_global, convertir_a_estructura_loca);
 	r_local = fopen(string_duplicate("Probando_designado"), "w+");
@@ -563,12 +570,9 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 
 	}
 
-
-	//char s = '\0';
-	//fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
 	free(ruta_reduccion_global);
-	return nodo_designado;
+	return SUCCESS;
 }
 
 bool quedan_datos_por_leer(t_list *lista){
