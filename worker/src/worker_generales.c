@@ -555,8 +555,8 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 
 	}
 
-	char s = '\0';
-	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
+//	char s = '\0';
+//	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
 	free(ruta_reduccion_global);
 	return nodo_designado;
@@ -620,7 +620,6 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 
 	int largo_linea;
 	char * linea = NULL;
-	socket_recv(&fd, largo_linea, sizeof(int));
 	void * buffer;
 	size_t size = 0;
 	while((getline(&linea, &size, f) != -1)){
