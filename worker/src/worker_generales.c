@@ -260,7 +260,7 @@ int processRequest(uint8_t task_code, void* pedido){
 				string_append(&instruccion, nodo_designado->archivo_rg);
 				string_append(&instruccion, "_temp | ");
 				string_append(&instruccion, script_filename);
-				string_append(&instruccion, " > "); //|sort
+				string_append(&instruccion, " > ");
 				string_append(&instruccion, PATH);
 				string_append(&instruccion, nodo_designado->archivo_rg);
 				//string_append(&instruccion, "'");
@@ -450,15 +450,6 @@ void * map_file(char * file_path, size_t* size, int flags) {
 
 
 
-
-
-
-
-
-
-
-
-
 void leer_linea(t_estructura_loca_apareo * est_apareo) {
 	if(est_apareo->es_designado){
 		size_t size;
@@ -559,6 +550,7 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 
 	}
 
+
 	//char s = '\0';
 	//fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
@@ -624,7 +616,6 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 
 	int largo_linea;
 	char * linea = NULL;
-	//socket_recv(&fd, largo_linea, sizeof(int));
 	void * buffer;
 	size_t size = 0;
 	while((getline(&linea, &size, f) != -1)){

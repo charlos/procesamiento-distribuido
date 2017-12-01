@@ -101,7 +101,47 @@ int main(int argc, char * argv[]) {
 
 		if(exec_code_recv == SUCCESS){
 
-		  if ((pid=fork()) == 0 ){
+			int status_child1;
+			pid_t pid_final;
+		     if (pid = fork()) {
+		             waitpid(pid, &status_child1, NULL);
+					 //Se cierra el socket en el padre
+		             close(new_socket);
+		     } else if (!pid) {
+		             if (pid_final = fork()) {
+		                     exit(0);
+		             } else if (!pid_final) {
+		            	 log_trace(logger, "Proceso Hijo PID %d (PID del padre: %d)",getpid(),getppid());
+
+		            	 int child_status = processRequest(task_code, buffer);
+		            	 //child_status = SUCCESS;
+		            	 int resp_status;
+		            	 if(task_code != REDUCE_GLOBAL_OC_N){
+		            		 resp_status = task_response_send(new_socket,task_code, child_status, logger);
+		            		 if(resp_status==SUCCESS){
+		            			 log_trace(logger, "WORKER - El resultado de la etapa fue enviado a Master correctamente");
+		            		 }else{
+		            			 // log_error(logger,"WORKER - Error al enviar resultado de la etapa %d a Master: %d",task_code, new_socket);
+		            		 }
+		            	 }
+		            	 // En la ejecución del hijo libero el buffer recibido cuando se termino de utilizar
+		            	 free_request(task_code, buffer);
+		            	 log_trace(logger, "WORKER - Fin de Proceso Hijo PID %d",getpid());
+		            	 //cierro el hijo
+		            	 exit(0);
+		             } else {
+		                     /* error */
+		             }
+		     } else {
+		             /* error */
+		     }
+
+
+
+
+
+/*
+		   if ((pid=fork()) == 0 ){
 			  log_trace(logger, "Proceso Hijo PID %d (PID del padre: %d)",getpid(),getppid());
 
 			  int child_status = processRequest(task_code, buffer);
@@ -109,24 +149,23 @@ int main(int argc, char * argv[]) {
 			  int resp_status;
 			  if(task_code != REDUCE_GLOBAL_OC_N){
 				  resp_status = task_response_send(new_socket,task_code, child_status, logger);
-
 				  if(resp_status==SUCCESS){
 					  log_trace(logger, "WORKER - El resultado de la etapa fue enviado a Master correctamente");
 				  }else{
 					 // log_error(logger,"WORKER - Error al enviar resultado de la etapa %d a Master: %d",task_code, new_socket);
 				  }
 			  }
-
 			  // En la ejecución del hijo libero el buffer recibido cuando se termino de utilizar
 			  free_request(task_code, buffer);
 			  log_trace(logger, "WORKER - Fin de Proceso Hijo PID %d",getpid());
 			  //cierro el hijo
 			  exit(0);
-		  }
-		  else {
+		   }
+		   else {
 			    //Se cierra el socket en el padre
 				close(new_socket);
-		  }
+		   }
+		   */
 		}else{
 			//Worker no recibió bien el pedido de parte de Master
 			log_error(logger,"WORKER - Error al recibir pedido: %d", exec_code_recv);

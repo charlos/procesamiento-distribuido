@@ -266,6 +266,7 @@ void atender_respuesta_almacenamiento(t_yama_planificacion_resp * solicitud) {
 
 			// recibir archivo y ruta
 			t_response_task * response = task_response_recv(nodo_enc_socket, logger);
+			send_recv_status(nodo_enc_socket, response->exec_code);
 
 			if(response->exec_code == DISCONNECTED_CLIENT) {
 				result = ALMACENAMIENTO_ERROR;
