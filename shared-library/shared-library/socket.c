@@ -67,6 +67,7 @@ int connect_to_socket(char * server_ip, char * server_port) {
 	if (connect(server_socket, server_info->ai_addr, server_info->ai_addrlen) == -1) {
 		close(server_socket);
 		fprintf(stderr, "socket - error en connect()\n");
+		server_socket = -1;
 		//exit(1);
 	}
 	freeaddrinfo(server_info);

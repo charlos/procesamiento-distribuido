@@ -81,5 +81,7 @@ void free_nodo(t_red_global* nodo);
 void gen_random(char *s, const int len);
 void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger);
 char *temporal_get_string_time_bis();
+int es_designado(t_red_global *nodo);
+int murio_nodo(t_estructura_loca_apareo* apareo);
 
 #endif /* WORKER_H_ */
