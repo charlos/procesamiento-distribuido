@@ -120,6 +120,11 @@ int processRequest(uint8_t task_code, void* pedido){
 					size_t databin_size;
 					string_append(&script_filename,PATH);
 					string_append(&script_filename,"script_transf_");
+					string_append(&script_filename,worker_conf->nodo_name);
+					string_append(&script_filename,"_");
+					char* bloque = string_itoa(request->block);
+					string_append(&script_filename, bloque);
+					string_append(&script_filename,"_");
 					char *tiempo = temporal_get_string_time_bis();
 					string_append(&script_filename,tiempo);
 					//string_append(&script_filename,".pl");
@@ -138,7 +143,6 @@ int processRequest(uint8_t task_code, void* pedido){
 					string_append(&filename,PATH);
 					string_append(&filename,worker_conf->nodo_name);
 					string_append(&filename, "_Block_");
-					char* bloque = string_itoa(request->block);
 					string_append(&filename, bloque);
 					free(bloque);
 					create_block_file(filename, buffer_size, buffer);
@@ -555,8 +559,8 @@ t_red_global* merge_global(t_list * lista_reduc_global){
 
 	}
 
-	char s = '\0';
-	fwrite(&s, sizeof(char), 1, resultado_apareo_global);
+	//char s = '\0';
+	//fwrite(&s, sizeof(char), 1, resultado_apareo_global);
 	fclose(resultado_apareo_global);
 	free(ruta_reduccion_global);
 	return nodo_designado;
@@ -620,7 +624,7 @@ void mandar_archivo_temporal(int fd, char *nombre_archivo, t_log *logger){
 
 	int largo_linea;
 	char * linea = NULL;
-	socket_recv(&fd, largo_linea, sizeof(int));
+	//socket_recv(&fd, largo_linea, sizeof(int));
 	void * buffer;
 	size_t size = 0;
 	while((getline(&linea, &size, f) != -1)){
