@@ -81,8 +81,6 @@ master_cfg * crear_config() {
 	master_cfg * mcfg = malloc(sizeof(master_cfg));
 	mcfg->ip_yama = string_duplicate(config_get_string_value(conf, "IP_YAMA"));
 	mcfg->port_yama = string_duplicate(config_get_string_value(conf, "PORT_YAMA"));
-	mcfg->ip_yama = config_get_string_value(conf, "IP_YAMA");
-	mcfg->port_yama = config_get_string_value(conf, "PORT_YAMA");
 
 	config_destroy(conf);
 	return mcfg;
