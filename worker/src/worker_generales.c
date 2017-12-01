@@ -141,9 +141,10 @@ int processRequest(uint8_t task_code, void* pedido){
 					munmap(data_bin_mf_ptr,  databin_size);
 					char* filename = string_new();
 					string_append(&filename,PATH);
-					string_append(&filename,worker_conf->nodo_name);
-					string_append(&filename, "_Block_");
+					//string_append(&filename,worker_conf->nodo_name);
+					string_append(&filename, "Block_");
 					string_append(&filename, bloque);
+					string_append(&filename, request->result_file);
 					free(bloque);
 					create_block_file(filename, buffer_size, buffer);
 
