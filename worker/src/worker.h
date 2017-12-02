@@ -74,7 +74,7 @@ void free_request_global_reduction_n(t_request_local_reducion_filename* request)
 void free_request_global_reduction(t_request_global_reduction* request);
 struct_file * read_file(char * path);
 bool quedan_datos_por_leer(t_list *lista);
-void leer_linea(t_estructura_loca_apareo *est_apareo);
+int leer_linea(t_estructura_loca_apareo *est_apareo);
 t_estructura_loca_apareo *convertir_a_estructura_loca(t_red_global *red_global);
 int merge_global(t_list *lista_reduc_global);
 bool quedan_datos_por_leer(t_list *lista);

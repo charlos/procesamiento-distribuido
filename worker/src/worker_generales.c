@@ -458,7 +458,7 @@ void * map_file(char * file_path, size_t* size, int flags) {
 
 
 
-void leer_linea(t_estructura_loca_apareo * est_apareo) {
+int leer_linea(t_estructura_loca_apareo * est_apareo) {
 	if(est_apareo->es_designado){
 		size_t size;
 		if (!(est_apareo->termine_leer_rl_asignado)) {
@@ -479,6 +479,7 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 			if(recibido <= 0) {
 				log_error(logger, "Se desconecto %s", est_apareo->nodo);
 				est_apareo->fd = -1;
+				return ERROR;
 			} else {
 				if (est_apareo->longitud_linea == 0) {
 					int recibido = 1;
@@ -495,6 +496,7 @@ void leer_linea(t_estructura_loca_apareo * est_apareo) {
 			}
 		}
 	}
+	return SUCCESS;
 }
 
 //
@@ -548,6 +550,7 @@ int merge_global(t_list * lista_reduc_global){
 	char * buffer;
 
 	list_iterate(lista, leer_linea);
+	if(list_any_satisfy(lista, murio_nodo))return -1;
 
 	t_estructura_loca_apareo * apareo;
 	t_estructura_loca_apareo * aux = NULL;
@@ -565,7 +568,7 @@ int merge_global(t_list * lista_reduc_global){
 		buffer = string_duplicate(aux->linea);
 		fwrite(buffer, sizeof(char), strlen(buffer), resultado_apareo_global);
 		free(buffer);
-		leer_linea(aux);
+		if(leer_linea(aux) == ERROR)return -1;
 
 		aux = NULL;
 

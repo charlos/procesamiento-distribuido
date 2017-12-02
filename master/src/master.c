@@ -129,7 +129,6 @@ void atender_respuesta_transform(respuesta_yama_transform * respuesta) {
 				result = traducir_respuesta(response_task->result_code, TRANSFORMACION);
 			}
 			//testeando free
-			log_trace(logger, "Liberando response_task de transformacion");
 			free(response_task);
 		} else {
 			result = NODO_DESCONECTADO;
@@ -194,7 +193,6 @@ void atender_respuesta_reduccion(t_red_local * respuesta) {
 				result = traducir_respuesta(response_task->result_code, REDUCCION_LOCAL);
 			}
 			//testeando free
-			log_trace(logger, "Liberando response_task de reduccion local");
 			free(response_task);
 		} else {
 			result = REDUC_LOCAL_ERROR;
@@ -268,7 +266,6 @@ void resolver_reduccion_global(t_yama_planificacion_resp *solicitud){
 				result = traducir_respuesta(response_task->result_code, REDUCCION_GLOBAL);
 			}
 			// Enviar notificacion a YAMA
-			log_trace(logger, "Liberando response_task de reduccion global");
 			free(response_task);
 		}
 		else {
