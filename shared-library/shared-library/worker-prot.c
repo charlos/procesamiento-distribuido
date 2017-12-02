@@ -394,7 +394,7 @@ int task_response_send(int master_socket,uint8_t OC, int resp_code, t_log * logg
 	//log_trace(logger, "received_bytes = %d | codigo = %d",received_bytes,code);
 
 	if (received_bytes <= 0) {
-		if (logger) log_error(logger, "------ MASTER %d >> disconnected", master_socket);
+		if (logger) log_trace(logger, "------ MASTER %d >> disconnected", master_socket);
 		return DISCONNECTED_SERVER;
 	}
 	return code;
