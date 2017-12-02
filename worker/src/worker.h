@@ -61,6 +61,7 @@ typedef struct {
 	char *resultado_reduccion_local;
 } t_argumento_reduccion_global;
 
+int file_exist (char *filename);
 void * map_file(char * file_path,size_t*, int flags);
 void load_properties(char*);
 void create_script_file(char *script_filename, int script_size, void* script );
