@@ -448,7 +448,10 @@ void * map_file(char * file_path, size_t* size, int flags) {
 
 
 
-
+int file_exist (char *filename){
+  struct stat   buffer;
+  return (stat (filename, &buffer) == 0);
+}
 
 
 
