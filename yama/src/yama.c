@@ -122,6 +122,7 @@ void cargar_configuracion(void) {
 	yama_conf->disp_base = config_get_int_value(conf, "DISP_BASE");
 	yama_conf->log = string_duplicate(config_get_string_value(conf, "LOG"));
 	config_destroy(conf);
+	log_trace(logger, " archivo de configuración cargado exitosamente (ALGORITMO %s)", yama_conf->algoritmo);
 }
 
 /**
