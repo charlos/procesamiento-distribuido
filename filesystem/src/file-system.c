@@ -44,6 +44,7 @@ pthread_rwlock_t * directories_locks;
 pthread_mutex_t nodes_table_m_lock;
 
 int node_index = 0;
+int pre_ass_node_index = 0;
 
 void write_file(void *, t_config *, int, t_list *);
 void upload_file(int *);
@@ -91,6 +92,7 @@ int check_fs_space(t_list *);
 int assign_node_block(char *);
 int assign_blocks_to_file(t_config **, int, char *, char, int, t_list *);
 char * pre_assign_node(char *);
+char * pre_assign_node_s(char *);
 char * get_datanode_ip_port(char * node_name);
 char * assign_node(char *);
 bool is_dir(char *, int, t_fs_directory *);
@@ -1121,12 +1123,13 @@ int check_fs_space(t_list * required_blocks) {
 	int block = 0;
 	char * cpy_01_node;
 	char * cpy_02_node;
+	pre_ass_node_index = node_index;
 	while (block < (required_blocks->elements_count)) {
-		cpy_01_node = pre_assign_node(NULL);
+		cpy_01_node = pre_assign_node_s(NULL);
 		if (!cpy_01_node) {
 			return ENOSPC;
 		}
-		cpy_02_node = pre_assign_node(cpy_01_node);
+		cpy_02_node = pre_assign_node_s(cpy_01_node);
 		if (!cpy_02_node) {
 			free(cpy_01_node);
 			return ENOSPC;
@@ -1167,6 +1170,49 @@ char * pre_assign_node(char * unwanted_node) {
 		return string_duplicate(selected_node->node_name);
 	}
 }
+
+/**
+ * @NAME pre_assign_node_s
+ */
+char * pre_assign_node_s(char * unwanted_node) {
+
+	t_fs_node * selected_node = NULL;
+	t_fs_node * node;
+
+	int index = pre_ass_node_index;
+	while (index < (nodes_list->elements_count)) {
+		node = (t_fs_node *) list_get(nodes_list, index);
+		if (unwanted_node && (strcmp((node->node_name), unwanted_node) == 0)) {
+			index++;
+			if (index >= (nodes_list->elements_count))
+				index = 0;
+		} else {
+			if (((node->free_blocks) > 0) && (get_datanode_fd(node->node_name) != DISCONNECTED_NODE)) {
+				selected_node = node;
+				index++;
+				if (index >= (nodes_list->elements_count))
+					index = 0;
+				break;
+			}
+			index++;
+			if (index >= (nodes_list->elements_count))
+				index = 0;
+		}
+		if (index == pre_ass_node_index) {
+			break;
+		}
+	}
+
+	pre_ass_node_index = index;
+
+	if (!selected_node) {
+		return NULL;
+	} else {
+		(selected_node->free_blocks)--;
+		return string_duplicate(selected_node->node_name);
+	}
+}
+
 
 /**
  * @NAME assign_node
